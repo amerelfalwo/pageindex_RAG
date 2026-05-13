@@ -1,14 +1,22 @@
 import os
+from typing import Optional
 from pageindex.client import PageIndexClient
 
 class DocumentService:
-    def __init__(self):
-        self.api_keys = [
-            os.getenv("PAGEINDEX_API_KEY_1"),
-            os.getenv("PAGEINDEX_API_KEY_2"),
-            os.getenv("PAGEINDEX_API_KEY_3")
-        ]
-        self.api_keys = [key for key in self.api_keys if key]
+    def __init__(self, api_key: Optional[str] = None):
+        api_keys = []
+        if api_key:
+            api_keys.append(api_key)
+
+        api_keys.extend(
+            [
+                os.getenv("PAGEINDEX_API_KEY_1"),
+                os.getenv("PAGEINDEX_API_KEY_2"),
+                os.getenv("PAGEINDEX_API_KEY_3"),
+            ]
+        )
+
+        self.api_keys = [key for key in api_keys if key]
 
     def process_pdf(self, file_path: str) -> list:
         if not self.api_keys:
