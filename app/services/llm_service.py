@@ -23,62 +23,47 @@ Chat History:
         return response.choices[0].message.content
 
     async def llm_tree_search(self, query: str, tree: list, model: str = "gpt-4o") -> dict:
-        final_nodes = []
-        all_thinking = ""
+        # تحويل الشجرة بالكامل لقائمة مسطحة (Flat List) لتسريع البحث
+        all_nodes_data = []
         
-        async def explore_level(nodes, level_name="Root"):
-            nonlocal all_thinking, final_nodes
-            
-            if not nodes:
-                return
-                
-            current_level_data = []
+        def flatten_tree(nodes):
             for n in nodes:
-                current_level_data.append({
+                all_nodes_data.append({
                     "node_id": n["node_id"],
                     "title": n["title"],
-                    "summary": n.get("text", "")[:200] 
+                    "summary": n.get("text", "")[:150] # نأخذ عينة صغيرة جداً
                 })
-                
-            prompt = f"""You are analyzing a specific level of a document tree (Level: {level_name}).
-Your task is to identify which node IDs most likely contain the answer to the query.
-Only select nodes that are highly relevant. If none are relevant, return an empty node_list.
+                if n.get("nodes"):
+                    flatten_tree(n["nodes"])
+                    
+        flatten_tree(tree)
+        
+        prompt = f"""You are a fast document retrieval assistant.
+Below is a list of all available document sections with their titles and brief summaries.
+Your task is to identify a MAXIMUM of 3 node IDs that are most likely to contain the answer to the user's query.
+If none are relevant, return an empty node_list.
 
 Query: {query}
 
-Nodes at this level:
-{json.dumps(current_level_data, indent=2)}
+Available Sections:
+{json.dumps(all_nodes_data, indent=2)}
 
 Reply ONLY in this exact JSON format:
 {{
-  "thinking": "<brief reasoning for this level>",
-  "node_list": ["node_id1", "node_id2"]
+    "node_list": ["node_id1", "node_id2"]
 }}"""
 
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            )
-            
-            result = json.loads(response.choices[0].message.content)
-            chosen_ids = result.get("node_list", [])
-            
-            if result.get("thinking"):
-                all_thinking += f"\n[Level: {level_name}] " + result.get("thinking")
-                
-            for node in nodes:
-                if node["node_id"] in chosen_ids:
-                    final_nodes.append(node["node_id"])
-                    children = node.get("nodes", [])
-                    if children:
-                        await explore_level(children, level_name=node["title"])
-
-        await explore_level(tree)
-        final_nodes = list(set(final_nodes))
+        response = await self.client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        final_nodes = result.get("node_list", [])
         
         return {
-            "thinking": all_thinking.strip(),
+            "thinking": "Single-shot extraction completed.",
             "node_list": final_nodes
         }
 
@@ -130,5 +115,6 @@ Available Context from the document:
         )
         
         async for chunk in response:
-            if chunk.choices[0].delta.content is not None:
-                yield chunk.choices[0].delta.content
+            if chunk.choices and len(chunk.choices) > 0:
+                if chunk.choices[0].delta.content is not None:
+                    yield chunk.choices[0].delta.content
