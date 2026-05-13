@@ -18,6 +18,29 @@ class LLMService:
             raise ValueError("GEMINI_API_KEY is not configured.")
         return self.gemini_client
 
+    def _normalize_tree(self, tree: object) -> list:
+        if isinstance(tree, str):
+            try:
+                tree = json.loads(tree)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Tree is a string but not valid JSON.") from exc
+
+        if isinstance(tree, dict):
+            if "tree" in tree and isinstance(tree["tree"], list):
+                tree = tree["tree"]
+            elif "nodes" in tree and isinstance(tree["nodes"], list) and "node_id" not in tree:
+                tree = tree["nodes"]
+            else:
+                tree = [tree]
+
+        if not isinstance(tree, list):
+            raise TypeError("Tree must be a list of nodes.")
+
+        return tree
+
+    def normalize_tree(self, tree: object) -> list:
+        return self._normalize_tree(tree)
+
     async def summarize_history(self, history: list, model: str = "gpt-4o") -> str:
         history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history if msg['role'] != 'system'])
         
@@ -40,6 +63,7 @@ Chat History:
             return response.choices[0].message.content
 
     async def llm_tree_search(self, query: str, tree: list, model: str = "gpt-4o") -> dict:
+        tree = self._normalize_tree(tree)
         all_nodes_data = []
         
         def flatten_tree(nodes):
@@ -90,6 +114,7 @@ Reply ONLY in this exact JSON format:
         }
 
     def find_nodes_by_ids(self, tree: list, target_ids: list) -> list:
+        tree = self._normalize_tree(tree)
         found = []
         for node in tree:
             if node["node_id"] in target_ids:
@@ -107,9 +132,13 @@ Reply ONLY in this exact JSON format:
         else:
             context_parts = []
             for node in nodes:
+                image_markers = ""
+                images = node.get("images") or []
+                if images:
+                    image_markers = "\n" + "\n".join([f"[IMAGE_AVAILABLE: {url}]" for url in images])
                 context_parts.append(
                     f"[Section: '{node['title']}' | Page {node.get('page_index', '?')}]\n"
-                    f"{node.get('text', 'Content not available.')}"
+                    f"{node.get('text', 'Content not available.') }{image_markers}"
                 )
             context_msg = "\n\n---\n\n".join(context_parts)
         
@@ -121,6 +150,7 @@ Strict rules you must follow:
 3. Citation: For any information you provide, you must cite the section title and page number in parentheses.
 4. Conversational Awareness: If the user greets you (e.g., "Hello") or asks about your identity, politely respond, introduce yourself as a document analysis assistant, and ask them to prompt their questions about the document.
 5. Conciseness: Keep your answers direct, accurate, and organized in bullet points if necessary.
+6. IF there is an [IMAGE_AVAILABLE: url] in the context relevant to the user's question, YOU MUST START your response by displaying the image using exact Markdown syntax: ![Image](url). AFTER displaying the image, write your detailed explanation.
 
 Available Context from the document:
 {context_msg}"""
