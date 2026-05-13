@@ -1,9 +1,15 @@
+import os
 import json
+import google.generativeai as genai
 from openai import AsyncOpenAI
 
 class LLMService:
     def __init__(self, api_key: str, base_url: str = "https://models.inference.ai.azure.com"):
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if gemini_key:
+            genai.configure(api_key=gemini_key)
 
     async def summarize_history(self, history: list, model: str = "gpt-4o") -> str:
         history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history if msg['role'] != 'system'])
@@ -14,16 +20,19 @@ Focus on the main context, key facts discussed, and the user's overall intent.
 Chat History:
 {history_text}"""
 
-        response = await self.client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
-        
-        return response.choices[0].message.content
+        if "gemini" in model.lower():
+            gen_model = genai.GenerativeModel(model)
+            response = gen_model.generate_content(prompt)
+            return response.text
+        else:
+            response = await self.client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3
+            )
+            return response.choices[0].message.content
 
     async def llm_tree_search(self, query: str, tree: list, model: str = "gpt-4o") -> dict:
-        # تحويل الشجرة بالكامل لقائمة مسطحة (Flat List) لتسريع البحث
         all_nodes_data = []
         
         def flatten_tree(nodes):
@@ -31,7 +40,7 @@ Chat History:
                 all_nodes_data.append({
                     "node_id": n["node_id"],
                     "title": n["title"],
-                    "summary": n.get("text", "")[:150] # نأخذ عينة صغيرة جداً
+                    "summary": n.get("text", "")[:150]
                 })
                 if n.get("nodes"):
                     flatten_tree(n["nodes"])
@@ -53,14 +62,19 @@ Reply ONLY in this exact JSON format:
     "node_list": ["node_id1", "node_id2"]
 }}"""
 
-        response = await self.client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        
-        result = json.loads(response.choices[0].message.content)
-        final_nodes = result.get("node_list", [])
+        if "gemini" in model.lower():
+            gen_model = genai.GenerativeModel(model, generation_config={"response_mime_type": "application/json"})
+            response = gen_model.generate_content(prompt)
+            result = json.loads(response.text)
+            final_nodes = result.get("node_list", [])
+        else:
+            response = await self.client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            result = json.loads(response.choices[0].message.content)
+            final_nodes = result.get("node_list", [])
         
         return {
             "thinking": "Single-shot extraction completed.",
@@ -103,18 +117,33 @@ Strict rules you must follow:
 Available Context from the document:
 {context_msg}"""
 
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(chat_history)
-        messages.append({"role": "user", "content": query})
-        
-        response = await self.client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.3,
-            stream=True
-        )
-        
-        async for chunk in response:
-            if chunk.choices and len(chunk.choices) > 0:
-                if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+        if "gemini" in model.lower():
+            gen_model = genai.GenerativeModel(model)
+            gemini_messages = [{"role": "user", "parts": [system_prompt]}]
+            
+            for msg in chat_history:
+                role = "user" if msg["role"] == "user" else "model"
+                gemini_messages.append({"role": role, "parts": [msg["content"]]})
+                
+            gemini_messages.append({"role": "user", "parts": [query]})
+            
+            response = gen_model.generate_content(gemini_messages, stream=True)
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+        else:
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.extend(chat_history)
+            messages.append({"role": "user", "content": query})
+            
+            response = await self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.3,
+                stream=True
+            )
+            
+            async for chunk in response:
+                if chunk.choices and len(chunk.choices) > 0:
+                    if chunk.choices[0].delta.content is not None:
+                        yield chunk.choices[0].delta.content
