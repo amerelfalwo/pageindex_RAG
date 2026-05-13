@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 from google import genai
 from google.genai import types
 from openai import AsyncOpenAI
@@ -36,7 +37,25 @@ class LLMService:
         if not isinstance(tree, list):
             raise TypeError("Tree must be a list of nodes.")
 
+        self._coerce_node_ids(tree)
+
         return tree
+
+    def _coerce_node_ids(self, nodes: list):
+        if not isinstance(nodes, list):
+            return
+        for index, node in enumerate(nodes):
+            if not isinstance(node, dict):
+                continue
+            if not node.get("node_id"):
+                for key in ("id", "nodeId", "nodeID", "uuid"):
+                    if node.get(key):
+                        node["node_id"] = node[key]
+                        break
+            if not node.get("node_id"):
+                node["node_id"] = f"auto_{uuid.uuid4().hex}"
+            if node.get("nodes"):
+                self._coerce_node_ids(node["nodes"])
 
     def normalize_tree(self, tree: object) -> list:
         return self._normalize_tree(tree)
@@ -68,9 +87,11 @@ Chat History:
         
         def flatten_tree(nodes):
             for n in nodes:
+                if not isinstance(n, dict):
+                    continue
                 all_nodes_data.append({
-                    "node_id": n["node_id"],
-                    "title": n["title"],
+                    "node_id": n.get("node_id"),
+                    "title": n.get("title", "(untitled)"),
                     "summary": n.get("text", "")[:150]
                 })
                 if n.get("nodes"):
@@ -117,7 +138,9 @@ Reply ONLY in this exact JSON format:
         tree = self._normalize_tree(tree)
         found = []
         for node in tree:
-            if node["node_id"] in target_ids:
+            if not isinstance(node, dict):
+                continue
+            if node.get("node_id") in target_ids:
                 found.append(node)
             if node.get("nodes"):
                 found.extend(self.find_nodes_by_ids(node["nodes"], target_ids))
