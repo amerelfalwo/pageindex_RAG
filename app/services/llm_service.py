@@ -1,15 +1,22 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from openai import AsyncOpenAI
 
 class LLMService:
     def __init__(self, api_key: str, base_url: str = "https://models.inference.ai.azure.com"):
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self.gemini_client = None
         
         gemini_key = os.getenv("GEMINI_API_KEY")
         if gemini_key:
-            genai.configure(api_key=gemini_key)
+            self.gemini_client = genai.Client(api_key=gemini_key)
+
+    def _require_gemini_client(self) -> genai.Client:
+        if not self.gemini_client:
+            raise ValueError("GEMINI_API_KEY is not configured.")
+        return self.gemini_client
 
     async def summarize_history(self, history: list, model: str = "gpt-4o") -> str:
         history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history if msg['role'] != 'system'])
@@ -21,9 +28,9 @@ Chat History:
 {history_text}"""
 
         if "gemini" in model.lower():
-            gen_model = genai.GenerativeModel(model)
-            response = gen_model.generate_content(prompt)
-            return response.text
+            client = self._require_gemini_client()
+            response = client.models.generate_content(model=model, contents=prompt)
+            return response.text or ""
         else:
             response = await self.client.chat.completions.create(
                 model=model,
@@ -63,9 +70,10 @@ Reply ONLY in this exact JSON format:
 }}"""
 
         if "gemini" in model.lower():
-            gen_model = genai.GenerativeModel(model, generation_config={"response_mime_type": "application/json"})
-            response = gen_model.generate_content(prompt)
-            result = json.loads(response.text)
+            client = self._require_gemini_client()
+            config = types.GenerateContentConfig(response_mime_type="application/json")
+            response = client.models.generate_content(model=model, contents=prompt, config=config)
+            result = json.loads(response.text or "{}")
             final_nodes = result.get("node_list", [])
         else:
             response = await self.client.chat.completions.create(
@@ -118,16 +126,24 @@ Available Context from the document:
 {context_msg}"""
 
         if "gemini" in model.lower():
-            gen_model = genai.GenerativeModel(model)
-            gemini_messages = [{"role": "user", "parts": [system_prompt]}]
-            
+            client = self._require_gemini_client()
+            gemini_contents = [
+                types.Content(role="user", parts=[types.Part(text=system_prompt)]),
+            ]
+
             for msg in chat_history:
                 role = "user" if msg["role"] == "user" else "model"
-                gemini_messages.append({"role": role, "parts": [msg["content"]]})
-                
-            gemini_messages.append({"role": "user", "parts": [query]})
-            
-            response = gen_model.generate_content(gemini_messages, stream=True)
+                gemini_contents.append(
+                    types.Content(role=role, parts=[types.Part(text=msg["content"])])
+                )
+
+            gemini_contents.append(
+                types.Content(role="user", parts=[types.Part(text=query)])
+            )
+
+            response = client.models.generate_content_stream(
+                model=model, contents=gemini_contents
+            )
             for chunk in response:
                 if chunk.text:
                     yield chunk.text
