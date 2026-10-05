@@ -25,6 +25,22 @@ class MemoryStorage:
         self._flat_sections: Dict[str, List[Dict[str, Any]]] = {}
         # hash → doc_id quick lookup (in-memory only; rebuilt from DB on demand)
         self._hash_to_doc_id: Dict[str, str] = {}
+        # active background indexing tasks
+        self._active_tasks: Dict[str, Any] = {}
+
+    def register_active_task(self, doc_id: str, task: Any) -> None:
+        self._active_tasks[doc_id] = task
+
+    def unregister_active_task(self, doc_id: str) -> None:
+        self._active_tasks.pop(doc_id, None)
+
+    def is_task_active(self, doc_id: str) -> bool:
+        task = self._active_tasks.get(doc_id)
+        if task is None:
+            return False
+        if hasattr(task, "done"):
+            return not task.done()
+        return True
 
     # ──────────────────────────────────────────────────────────────────────
     # Document hash / cache helpers
@@ -36,12 +52,32 @@ class MemoryStorage:
             doc = self._documents[doc_id]
             if doc.get("status") == "ready" and doc.get("tree"):
                 return doc
+            if doc.get("status") == "indexing":
+                return doc
 
         # 2. SQLite metadata
         db_meta = persistent_db.find_doc_by_hash(content_hash)
         if db_meta:
             doc_id = db_meta["doc_id"]
-            # 3. Try to load tree from disk JSON cache
+            if db_meta.get("status") == "indexing":
+                doc_obj = {
+                    "doc_id": doc_id,
+                    "document_id": doc_id,
+                    "filename": db_meta.get("filename", "document.pdf"),
+                    "status": "indexing",
+                    "progress": db_meta.get("progress", 10),
+                    "current_stage": db_meta.get("current_stage", "Processing PDF"),
+                    "page_count": 0,
+                    "section_count": 0,
+                    "content_hash": content_hash,
+                    "file_path": db_meta.get("file_path"),
+                    "error": None,
+                }
+                self._documents[doc_id] = doc_obj
+                self._hash_to_doc_id[content_hash] = doc_id
+                return doc_obj
+
+            # 3. Try to load tree from disk JSON cache for ready documents
             cache_path = os.path.join(CACHE_DIR, f"{content_hash}.json")
             if os.path.exists(cache_path):
                 try:
@@ -49,10 +85,16 @@ class MemoryStorage:
                         cached = json.load(f)
                     self._documents[doc_id] = {
                         "doc_id": doc_id,
+                        "document_id": doc_id,
                         "filename": cached.get("filename", db_meta.get("filename", "document.pdf")),
                         "status": "ready",
+                        "progress": 100,
+                        "current_stage": "Ready",
                         "tree": cached.get("tree"),
                         "page_count": cached.get("page_count", db_meta.get("page_count", 1)),
+                        "section_count": cached.get("section_count", db_meta.get("section_count", len(cached.get("flat_sections", [])))),
+                        "indexing_method": db_meta.get("indexing_method", "pageindex"),
+                        "duration": db_meta.get("duration"),
                         "error": None,
                         "content_hash": content_hash,
                         "created_at": cached.get("created_at", time.time()),
@@ -114,17 +156,26 @@ class MemoryStorage:
         status: str = "indexing",
         content_hash: Optional[str] = None,
         file_path: Optional[str] = None,
+        current_stage: str = "Processing PDF",
+        progress: int = 10,
     ) -> str:
         document_id = doc_id or str(uuid.uuid4())
         now = time.time()
         self._documents[document_id] = {
             "doc_id": document_id,
+            "document_id": document_id,
             "filename": filename,
             "status": status,
+            "progress": progress,
+            "current_stage": current_stage,
             "tree": None,
             "page_count": 0,
+            "section_count": 0,
+            "indexing_method": None,
+            "duration": None,
             "error": None,
             "content_hash": content_hash,
+            "file_path": file_path,
             "created_at": now,
             "updated_at": now,
         }
@@ -136,16 +187,73 @@ class MemoryStorage:
             doc_id=document_id,
             filename=filename,
             status=status,
+            progress=progress,
+            current_stage=current_stage,
             content_hash=content_hash,
             file_path=file_path,
         )
         return document_id
+
+    def update_document_progress(
+        self,
+        doc_id: str,
+        status: str = "indexing",
+        current_stage: str = "Processing PDF",
+        progress: int = 0,
+    ) -> None:
+        doc = self._documents.get(doc_id)
+        if not doc:
+            db_meta = persistent_db.get_doc_meta(doc_id)
+            if db_meta:
+                doc = {
+                    "doc_id": doc_id,
+                    "document_id": doc_id,
+                    "filename": db_meta.get("filename", "document.pdf"),
+                    "status": status,
+                    "progress": progress,
+                    "current_stage": current_stage,
+                    "tree": None,
+                    "page_count": db_meta.get("page_count", 0),
+                    "section_count": db_meta.get("section_count", 0),
+                    "indexing_method": db_meta.get("indexing_method"),
+                    "duration": db_meta.get("duration"),
+                    "error": db_meta.get("error"),
+                    "content_hash": db_meta.get("content_hash"),
+                    "file_path": db_meta.get("file_path"),
+                    "created_at": db_meta.get("created_at", time.time()),
+                    "updated_at": time.time(),
+                }
+                self._documents[doc_id] = doc
+
+        if doc:
+            doc["status"] = status
+            doc["current_stage"] = current_stage
+            doc["progress"] = progress
+            doc["updated_at"] = time.time()
+
+            persistent_db.upsert_doc_meta(
+                doc_id=doc_id,
+                filename=doc.get("filename", "document.pdf"),
+                status=status,
+                page_count=doc.get("page_count", 0),
+                section_count=doc.get("section_count", 0),
+                progress=progress,
+                current_stage=current_stage,
+                indexing_method=doc.get("indexing_method"),
+                duration=doc.get("duration"),
+                error=doc.get("error"),
+                content_hash=doc.get("content_hash"),
+                file_path=doc.get("file_path"),
+            )
 
     def set_document_ready(
         self,
         doc_id: str,
         tree: Any,
         page_count: Optional[int] = None,
+        section_count: Optional[int] = None,
+        indexing_method: Optional[str] = None,
+        duration: Optional[float] = None,
         filename: Optional[str] = None,
         file_path: Optional[str] = None,
     ) -> None:
@@ -154,10 +262,21 @@ class MemoryStorage:
 
         doc = self._documents[doc_id]
         doc["status"] = "ready"
+        doc["progress"] = 100
+        doc["current_stage"] = "Ready"
         doc["tree"] = tree
-        doc["page_count"] = page_count if page_count is not None else (len(tree) if isinstance(tree, list) else 1)
+        if page_count is not None:
+            doc["page_count"] = page_count
+        if section_count is not None:
+            doc["section_count"] = section_count
+        if indexing_method is not None:
+            doc["indexing_method"] = indexing_method
+        if duration is not None:
+            doc["duration"] = duration
         if filename:
             doc["filename"] = filename
+        if file_path:
+            doc["file_path"] = file_path
         doc["updated_at"] = time.time()
         doc["error"] = None
         self._trees[doc_id] = tree
@@ -166,26 +285,93 @@ class MemoryStorage:
             doc_id=doc_id,
             filename=doc["filename"],
             status="ready",
-            page_count=doc["page_count"],
+            page_count=doc.get("page_count", 0),
+            section_count=doc.get("section_count", 0),
+            progress=100,
+            current_stage="Ready",
+            indexing_method=doc.get("indexing_method"),
+            duration=doc.get("duration"),
+            error=None,
             content_hash=doc.get("content_hash"),
-            file_path=file_path,
+            file_path=file_path or doc.get("file_path"),
         )
 
-    def set_document_error(self, doc_id: str, error_message: str) -> None:
+    def set_document_error(
+        self,
+        doc_id: str,
+        error_message: str,
+        duration: Optional[float] = None,
+    ) -> None:
         if doc_id not in self._documents:
-            self.create_document(doc_id=doc_id, status="error")
+            self.create_document(doc_id=doc_id, status="failed")
         doc = self._documents[doc_id]
-        doc["status"] = "error"
+        doc["status"] = "failed"
+        doc["progress"] = 0
+        doc["current_stage"] = "Failed"
         doc["error"] = error_message
+        if duration is not None:
+            doc["duration"] = duration
         doc["updated_at"] = time.time()
+
         persistent_db.upsert_doc_meta(
             doc_id=doc_id,
             filename=doc.get("filename", "document.pdf"),
-            status="error",
+            status="failed",
+            page_count=doc.get("page_count", 0),
+            section_count=doc.get("section_count", 0),
+            progress=0,
+            current_stage="Failed",
+            indexing_method=doc.get("indexing_method"),
+            duration=duration or doc.get("duration"),
+            error=error_message,
+            content_hash=doc.get("content_hash"),
+            file_path=doc.get("file_path"),
         )
 
     def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        return self._documents.get(doc_id)
+        if not doc_id:
+            return None
+        doc = self._documents.get(doc_id)
+        if doc:
+            return doc
+
+        # Check SQLite
+        db_meta = persistent_db.get_doc_meta(doc_id)
+        if db_meta:
+            doc_obj = {
+                "doc_id": doc_id,
+                "document_id": doc_id,
+                "filename": db_meta.get("filename", "document.pdf"),
+                "status": db_meta.get("status", "unknown"),
+                "progress": db_meta.get("progress", 100 if db_meta.get("status") == "ready" else 0),
+                "current_stage": db_meta.get("current_stage", "Ready" if db_meta.get("status") == "ready" else "unknown"),
+                "page_count": db_meta.get("page_count", 0),
+                "section_count": db_meta.get("section_count", 0),
+                "indexing_method": db_meta.get("indexing_method"),
+                "duration": db_meta.get("duration"),
+                "error": db_meta.get("error"),
+                "content_hash": db_meta.get("content_hash"),
+                "file_path": db_meta.get("file_path"),
+                "created_at": db_meta.get("created_at", time.time()),
+                "updated_at": db_meta.get("updated_at", time.time()),
+            }
+            if doc_obj["status"] == "ready":
+                cache_path = os.path.join(CACHE_DIR, f"{doc_obj['content_hash']}.json") if doc_obj.get("content_hash") else None
+                if cache_path and os.path.exists(cache_path):
+                    try:
+                        with open(cache_path, "r", encoding="utf-8") as f:
+                            cached = json.load(f)
+                        doc_obj["tree"] = cached.get("tree")
+                        self._trees[doc_id] = cached.get("tree")
+                        if cached.get("node_map"):
+                            self._node_maps[doc_id] = cached["node_map"]
+                        if cached.get("flat_sections"):
+                            self._flat_sections[doc_id] = cached["flat_sections"]
+                    except Exception:
+                        pass
+            self._documents[doc_id] = doc_obj
+            return doc_obj
+        return None
 
     # ──────────────────────────────────────────────────────────────────────
     # Legacy / convenience tree helpers

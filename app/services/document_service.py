@@ -176,86 +176,209 @@ class DocumentService:
         doc.close()
         return nodes
 
-    def process_pdf(self, file_path: str) -> list:
+    @staticmethod
+    def _is_valid_tree(tree: Any) -> bool:
+        if not tree:
+            return False
+        if isinstance(tree, dict):
+            tree = [tree]
+        if not isinstance(tree, list) or len(tree) == 0:
+            return False
+
+        def has_valid_content(items: list) -> bool:
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                if (it.get("title") and it["title"].strip()) or (it.get("text") and it["text"].strip()) or (it.get("summary") and it["summary"].strip()):
+                    return True
+                if it.get("nodes") and isinstance(it["nodes"], list) and has_valid_content(it["nodes"]):
+                    return True
+            return False
+
+        return has_valid_content(tree)
+
+    @staticmethod
+    def _count_sections(tree: Any) -> int:
+        if not isinstance(tree, list):
+            return 1 if isinstance(tree, dict) else 0
+        count = 0
+        for node in tree:
+            if isinstance(node, dict):
+                count += 1
+                if node.get("nodes"):
+                    count += DocumentService._count_sections(node["nodes"])
+        return count
+
+    def process_pdf(
+        self,
+        file_path: str,
+        document_id: Optional[str] = None,
+        on_stage: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         t_start = time.monotonic()
+        doc_log = f"document_id={document_id} " if document_id else ""
+
+        # 1. Physical page count of the PDF via PyMuPDF (guaranteed accurate)
+        actual_page_count = 1
+        try:
+            with fitz.open(file_path) as pdf_doc:
+                actual_page_count = len(pdf_doc)
+        except Exception as e:
+            app_logger.warning(f"Could not read page count via PyMuPDF for {file_path}: {e}")
+
+        app_logger.info(f"[INDEX] {doc_log}stage=upload pages={actual_page_count}")
+        if on_stage:
+            on_stage("Processing PDF", 15)
+
         page_images = self._extract_images(file_path)
         t_images = time.monotonic() - t_start
 
         if not self.api_keys:
-            app_logger.warning("No PageIndex API keys found. Falling back to local PyMuPDF extraction.")
+            app_logger.warning(f"[INDEX] {doc_log}stage=fallback method=pymupdf reason='no_api_keys'")
+            if on_stage:
+                on_stage("Building document structure", 50)
             t_parse_start = time.monotonic()
             nodes = self._local_pdf_parse(file_path)
             t_parse = time.monotonic() - t_parse_start
             tree = self._inject_images(nodes, page_images)
-            app_logger.info(f"[PERF] indexing_fallback=pymupdf images_extract={t_images:.2f}s pdf_parse={t_parse:.2f}s total={time.monotonic() - t_start:.2f}s")
-            return tree
+            sec_count = self._count_sections(tree)
+            total_time = time.monotonic() - t_start
+            app_logger.info(f"[INDEX] {doc_log}stage=ready duration={total_time:.2f}s method=pymupdf pages={actual_page_count} sections={sec_count}")
+            return {
+                "tree": tree,
+                "page_count": actual_page_count,
+                "section_count": sec_count,
+                "indexing_method": "pymupdf",
+                "duration": round(total_time, 2),
+                "failure_reason": "No PageIndex API keys configured",
+            }
 
         last_error = None
 
         for key in self.api_keys:
             try:
                 client = PageIndexClient(api_key=key)
-                app_logger.info(f"Submitting PDF to PageIndex with key ending in {key[-4:]}...")
+                app_logger.info(f"[INDEX] {doc_log}stage=pageindex_submit key=...{key[-4:]}")
+                if on_stage:
+                    on_stage("Building document structure", 25)
+
                 t_sub_start = time.monotonic()
                 submit_res = client.submit_document(file_path)
-                doc_id = submit_res.get("doc_id")
+                cloud_doc_id = submit_res.get("doc_id")
                 t_submit = time.monotonic() - t_sub_start
 
-                if not doc_id:
+                if not cloud_doc_id:
                     raise Exception(f"No doc_id returned by PageIndex: {submit_res}")
 
                 # Poll until PageIndex tree generation is completed
-                app_logger.info(f"Polling PageIndex tree status for doc_id: {doc_id}...")
-                max_retries = 35  # up to ~60-70 seconds
+                max_retries = 40  # up to ~75-85 seconds
                 is_completed = False
                 t_poll_start = time.monotonic()
 
                 for attempt in range(max_retries):
-                    meta = client.get_document(doc_id)
+                    app_logger.info(f"[INDEX] {doc_log}stage=pageindex_poll attempt={attempt + 1}/{max_retries}")
+                    if on_stage:
+                        on_stage("Building document structure", min(75, 25 + int(attempt * 1.3)))
+
+                    meta = client.get_document(cloud_doc_id)
                     status = meta.get("status")
                     if status == "completed":
                         is_completed = True
-                        app_logger.info(f"PageIndex completed indexing doc_id: {doc_id} in {time.monotonic() - t_poll_start:.2f}s")
+                        app_logger.info(f"[INDEX] {doc_log}stage=pageindex_poll completed in {time.monotonic() - t_poll_start:.2f}s")
                         break
                     elif status == "failed":
-                        raise Exception(f"PageIndex document processing failed for {doc_id}")
-                    # Adaptive sleep: start fast (1.0s) then back off slightly (up to 2.5s)
-                    sleep_sec = min(1.0 + attempt * 0.1, 2.5)
+                        raise Exception(f"PageIndex document processing failed for {cloud_doc_id}")
+
+                    # Adaptive sleep: start fast (1.0s) then back off slightly (up to 2.2s)
+                    sleep_sec = min(1.0 + attempt * 0.08, 2.2)
                     time.sleep(sleep_sec)
 
                 t_poll = time.monotonic() - t_poll_start
 
                 if is_completed:
+                    app_logger.info(f"[INDEX] {doc_log}stage=validation")
+                    if on_stage:
+                        on_stage("Validating index", 80)
+
                     t_fetch_start = time.monotonic()
-                    tree_res = client.get_tree(doc_id, node_summary=True)
-                    tree = tree_res.get("result", [])
+                    tree_res = client.get_tree(cloud_doc_id, node_summary=True)
+                    raw_tree = tree_res.get("result", [])
                     t_fetch = time.monotonic() - t_fetch_start
 
-                    if tree and len(tree) > 0:
+                    if self._is_valid_tree(raw_tree):
+                        tree = self._inject_images(raw_tree, page_images)
+                        sec_count = self._count_sections(tree)
                         total_time = time.monotonic() - t_start
                         app_logger.info(
-                            f"[PERF] pageindex_index success=True submit={t_submit:.2f}s poll={t_poll:.2f}s "
-                            f"tree_fetch={t_fetch:.2f}s images={t_images:.2f}s total={total_time:.2f}s sections={len(tree)}"
+                            f"[INDEX] {doc_log}stage=ready duration={total_time:.2f}s "
+                            f"method=pageindex pages={actual_page_count} sections={sec_count} "
+                            f"submit={t_submit:.2f}s poll={t_poll:.2f}s"
                         )
-                        return self._inject_images(tree, page_images)
+                        return {
+                            "tree": tree,
+                            "page_count": actual_page_count,
+                            "section_count": sec_count,
+                            "indexing_method": "pageindex",
+                            "duration": round(total_time, 2),
+                            "failure_reason": None,
+                        }
+                    else:
+                        app_logger.warning(f"[INDEX] {doc_log}stage=validation status=invalid_tree")
+                        last_error = "PageIndex returned empty or incomplete tree"
+                else:
+                    last_error = "PageIndex indexing poll timed out"
 
-                app_logger.warning("PageIndex returned empty or incomplete tree. Using local parser fallback.")
+                # If reached here, PageIndex produced invalid tree or timed out -> fallback
+                app_logger.info(f"[INDEX] {doc_log}stage=fallback method=pymupdf reason='{last_error}'")
+                if on_stage:
+                    on_stage("Building document structure", 85)
+
                 t_parse_start = time.monotonic()
                 nodes = self._local_pdf_parse(file_path)
                 t_parse = time.monotonic() - t_parse_start
-                app_logger.info(f"[PERF] indexing_fallback=pymupdf total={time.monotonic() - t_start:.2f}s sections={len(nodes)}")
-                return self._inject_images(nodes, page_images)
+                tree = self._inject_images(nodes, page_images)
+                sec_count = self._count_sections(tree)
+                total_time = time.monotonic() - t_start
+                app_logger.info(
+                    f"[INDEX] {doc_log}stage=ready duration={total_time:.2f}s "
+                    f"method=pymupdf pages={actual_page_count} sections={sec_count} reason='{last_error}'"
+                )
+                return {
+                    "tree": tree,
+                    "page_count": actual_page_count,
+                    "section_count": sec_count,
+                    "indexing_method": "pymupdf",
+                    "duration": round(total_time, 2),
+                    "failure_reason": last_error,
+                }
 
             except Exception as e:
                 error_msg = str(e)
                 app_logger.warning(f"PageIndex attempt failed with key {key[-4:]}: {error_msg}")
+                last_error = error_msg
                 if "LimitReached" in error_msg:
-                    last_error = error_msg
                     continue
                 else:
-                    last_error = error_msg
                     break
 
-        app_logger.warning(f"All PageIndex attempts failed ({last_error}). Using PyMuPDF local extraction.")
+        app_logger.info(f"[INDEX] {doc_log}stage=fallback method=pymupdf reason='{last_error}'")
+        if on_stage:
+            on_stage("Building document structure", 85)
+
+        t_parse_start = time.monotonic()
         nodes = self._local_pdf_parse(file_path)
-        return self._inject_images(nodes, page_images)
+        tree = self._inject_images(nodes, page_images)
+        sec_count = self._count_sections(tree)
+        total_time = time.monotonic() - t_start
+        app_logger.info(
+            f"[INDEX] {doc_log}stage=ready duration={total_time:.2f}s "
+            f"method=pymupdf pages={actual_page_count} sections={sec_count} reason='{last_error}'"
+        )
+        return {
+            "tree": tree,
+            "page_count": actual_page_count,
+            "section_count": sec_count,
+            "indexing_method": "pymupdf",
+            "duration": round(total_time, 2),
+            "failure_reason": last_error,
+        }

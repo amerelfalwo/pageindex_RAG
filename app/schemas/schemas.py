@@ -11,15 +11,22 @@ class AskRequest(BaseModel):
 class UploadResponse(BaseModel):
     message: str = "Success"
     doc_id: str
+    document_id: str
     filename: Optional[str] = None
-    status: str = "ready"
+    status: str = "indexing"
     page_count: Optional[int] = 0
 
 class DocumentStatusResponse(BaseModel):
+    document_id: str
     doc_id: str
     filename: str
-    status: str
+    status: str  # "uploaded" | "indexing" | "ready" | "failed"
+    progress: int = 0
+    current_stage: str = "uploaded"
     page_count: int = 0
+    section_count: int = 0
+    indexing_method: Optional[str] = None
+    duration: Optional[float] = None
     error: Optional[str] = None
 
 class NewChatResponse(BaseModel):

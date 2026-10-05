@@ -48,14 +48,20 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, created_at);
 
 CREATE TABLE IF NOT EXISTS doc_meta (
-    doc_id      TEXT PRIMARY KEY,
-    filename    TEXT,
-    status      TEXT,
-    page_count  INTEGER DEFAULT 0,
-    content_hash TEXT,
-    file_path   TEXT,
-    created_at  REAL NOT NULL,
-    updated_at  REAL NOT NULL
+    doc_id          TEXT PRIMARY KEY,
+    filename        TEXT,
+    status          TEXT,
+    page_count      INTEGER DEFAULT 0,
+    section_count   INTEGER DEFAULT 0,
+    progress        INTEGER DEFAULT 0,
+    current_stage   TEXT DEFAULT 'uploaded',
+    indexing_method TEXT,
+    duration        REAL,
+    error           TEXT,
+    content_hash    TEXT,
+    file_path       TEXT,
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL
 );
 """
 
@@ -89,6 +95,19 @@ class PersistentDB:
     def _init_schema(self) -> None:
         with self._tx() as conn:
             conn.executescript(_DDL)
+            # Ensure newly added columns exist in older DB instances
+            cursor = conn.execute("PRAGMA table_info(doc_meta)")
+            existing_cols = {row["name"] for row in cursor.fetchall()}
+            for col, col_type, default_val in [
+                ("section_count", "INTEGER", "0"),
+                ("progress", "INTEGER", "0"),
+                ("current_stage", "TEXT", "'uploaded'"),
+                ("indexing_method", "TEXT", "NULL"),
+                ("duration", "REAL", "NULL"),
+                ("error", "TEXT", "NULL"),
+            ]:
+                if col not in existing_cols:
+                    conn.execute(f"ALTER TABLE doc_meta ADD COLUMN {col} {col_type} DEFAULT {default_val}")
 
     # ── chat CRUD ───────────────────────────────────────────────────────────
     def create_chat(self, chat_id: Optional[str] = None, title: Optional[str] = None) -> str:
@@ -172,6 +191,12 @@ class PersistentDB:
         filename: str,
         status: str,
         page_count: int = 0,
+        section_count: int = 0,
+        progress: int = 0,
+        current_stage: str = "uploaded",
+        indexing_method: Optional[str] = None,
+        duration: Optional[float] = None,
+        error: Optional[str] = None,
         content_hash: Optional[str] = None,
         file_path: Optional[str] = None,
     ) -> None:
@@ -179,17 +204,31 @@ class PersistentDB:
         with self._tx() as conn:
             conn.execute(
                 """
-                INSERT INTO doc_meta(doc_id, filename, status, page_count, content_hash, file_path, created_at, updated_at)
-                VALUES(?,?,?,?,?,?,?,?)
+                INSERT INTO doc_meta(
+                    doc_id, filename, status, page_count, section_count,
+                    progress, current_stage, indexing_method, duration,
+                    error, content_hash, file_path, created_at, updated_at
+                )
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(doc_id) DO UPDATE SET
                     filename=excluded.filename,
                     status=excluded.status,
                     page_count=excluded.page_count,
-                    content_hash=COALESCE(excluded.content_hash, content_hash),
-                    file_path=COALESCE(excluded.file_path, file_path),
+                    section_count=excluded.section_count,
+                    progress=excluded.progress,
+                    current_stage=excluded.current_stage,
+                    indexing_method=COALESCE(excluded.indexing_method, doc_meta.indexing_method),
+                    duration=COALESCE(excluded.duration, doc_meta.duration),
+                    error=excluded.error,
+                    content_hash=COALESCE(excluded.content_hash, doc_meta.content_hash),
+                    file_path=COALESCE(excluded.file_path, doc_meta.file_path),
                     updated_at=excluded.updated_at
                 """,
-                (doc_id, filename, status, page_count, content_hash, file_path, now, now),
+                (
+                    doc_id, filename, status, page_count, section_count,
+                    progress, current_stage, indexing_method, duration,
+                    error, content_hash, file_path, now, now
+                ),
             )
 
     def get_doc_meta(self, doc_id: str) -> Optional[Dict[str, Any]]:
@@ -205,8 +244,9 @@ class PersistentDB:
         return [dict(r) for r in rows]
 
     def find_doc_by_hash(self, content_hash: str) -> Optional[Dict[str, Any]]:
+        # Match latest document with this hash
         row = self._conn().execute(
-            "SELECT * FROM doc_meta WHERE content_hash=? AND status='ready'",
+            "SELECT * FROM doc_meta WHERE content_hash=? ORDER BY updated_at DESC LIMIT 1",
             (content_hash,),
         ).fetchone()
         return dict(row) if row else None
