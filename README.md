@@ -15,7 +15,7 @@ An English-first, production-ready Document Analysis Assistant that uses a hiera
 
 - **Vectorless Retrieval:** Uses `PageIndex` to build a hierarchical tree of the document.
 - **Context-Aware Chat:** Maintains conversation history with rolling summarization.
-- **Streaming Responses:** Real-time typewriter effect using FastAPI and OpenAI streams.
+- **Streaming Responses:** Real-time typewriter effect using FastAPI and Hugging Face streams.
 - **No Hallucinations:** Strict system prompts to ensure answers are grounded in the document.
 - **Multimodal RAG:** Extracts images from PDFs, stores them in `/static`, and injects image URLs into context for citation and display.
 
@@ -23,7 +23,7 @@ An English-first, production-ready Document Analysis Assistant that uses a hiera
 
 - **Backend:** FastAPI, Python, `uv` package manager.
 - **Frontend:** React, Vite.
-- **AI Models:** OpenAI (GPT-4o / GPT-5-mini) via GitHub Models.
+- **AI Models:** Hugging Face Serverless Inference API (Llama 3.1 8B for retrieval + Qwen 2.5 72B for chat).
 - **Deployment:** Docker, Hugging Face Spaces.
 
 ## ⚙️ Environment Variables
@@ -31,7 +31,6 @@ An English-first, production-ready Document Analysis Assistant that uses a hiera
 Create a `.env` file in the root directory (For local testing only. On Hugging Face, add these in Settings -> Secrets):
 
 ```env
-OPENAI_API_KEY=your_openai_or_github_token_here
-PAGEINDEX_API_KEY=your_pageindex_api_key_here
-GEMINI_API_KEY=optional_gemini_key_if_using_gemini_models
+HF_TOKEN=your_huggingface_token_here
+PAGEINDEX_API_KEY_1=your_pageindex_api_key_here
 ```

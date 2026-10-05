@@ -1,24 +1,34 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 import os
-import shutil
-import uuid
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from services.document_service import DocumentService
-from services.llm_service import LLMService
-from core.rag_pipeline import VectorlessRAG
+# Ensure the 'app' directory is always discoverable in sys.path
+APP_DIR = Path(__file__).resolve().parent
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+
+from routers import api_router
+from utils.logger import app_logger
 
 load_dotenv()
 
-app = FastAPI(title="Vectorless RAG API")
+# App initialization
+app = FastAPI(
+    title="Vectorless RAG API",
+    description="Hierarchical Tree Search Document Analysis API with Multimodal Support",
+    version="1.0.0",
+)
 
-os.makedirs("static", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Static files for extracted document images
+STATIC_DIR = os.path.join(APP_DIR, "static")
+os.makedirs(STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,81 +37,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-doc_service = DocumentService(api_key=os.getenv("PAGEINDEX_API_KEY"))
-llm_service = LLMService(api_key=os.getenv("OPENAI_API_KEY"))
-rag_pipeline = VectorlessRAG(llm_service)
+# Register API routers
+app.include_router(api_router)
 
-trees_db = {}
-chats_db = {}
 
-class AskRequest(BaseModel):
-    doc_id: str
-    chat_id: str
-    query: str
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint to verify service availability."""
+    return {"status": "ok", "service": "Vectorless RAG API"}
 
-@app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Invalid file type")
-        
-    temp_path = f"temp_{file.filename}"
-    
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    try:
-        tree = doc_service.process_pdf(temp_path)
-        tree = llm_service.normalize_tree(tree)
-        doc_id = str(uuid.uuid4())
-        trees_db[doc_id] = tree
-        
-        return {
-            "message": "Success",
-            "doc_id": doc_id
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
 
-@app.post("/chat/new")
-async def create_chat():
-    chat_id = str(uuid.uuid4())
-    chats_db[chat_id] = []
-    return {"chat_id": chat_id}
-
-@app.post("/ask")
-async def ask_question(request: AskRequest):
-    if request.doc_id not in trees_db:
-        raise HTTPException(status_code=404, detail="Document ID not found")
-        
-    if request.chat_id not in chats_db:
-        chats_db[request.chat_id] = []
-        
-    if len(chats_db[request.chat_id]) > 6:
-        summary = await llm_service.summarize_history(chats_db[request.chat_id][:-2])
-        chats_db[request.chat_id] = [
-            {"role": "system", "content": f"Previous conversation summary:\n{summary}"}
-        ] + chats_db[request.chat_id][-2:]
-        
-    tree = trees_db[request.doc_id]
-    chat_history = chats_db[request.chat_id]
-    
-    async def stream_generator():
-        full_answer = ""
-        
-        async for chunk in rag_pipeline.answer_query_stream(request.query, tree, chat_history):
-            full_answer += chunk
-            yield chunk
-            
-        chats_db[request.chat_id].append({"role": "user", "content": request.query})
-        chats_db[request.chat_id].append({"role": "assistant", "content": full_answer})
-
-    return StreamingResponse(stream_generator(), media_type="text/event-stream")
-
-@app.get("/chat/{chat_id}/history")
-async def get_chat_history(chat_id: str):
-    if chat_id not in chats_db:
-        raise HTTPException(status_code=404, detail="Chat ID not found")
-    return {"history": chats_db[chat_id]}
+@app.on_event("startup")
+async def on_startup():
+    app_logger.info("Vectorless RAG API service started.")

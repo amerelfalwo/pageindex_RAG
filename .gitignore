@@ -12,3 +12,5 @@ wheels/
 
 *.ipynb
 app/data
+static
+evaluation
