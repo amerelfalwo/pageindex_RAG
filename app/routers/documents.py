@@ -57,14 +57,17 @@ async def upload_pdf(
         storage.set_chat_doc(chat_id, doc_id)
         app_logger.info(f"Associated document {doc_id} ('{file.filename}') with chat {chat_id} in indexing state.")
 
-    temp_path = f"temp_{doc_id}_{file.filename}"
-    with open(temp_path, "wb") as buffer:
+    # Ensure data directory exists
+    os.makedirs("data", exist_ok=True)
+    
+    file_path = os.path.join("data", f"{doc_id}_{file.filename}")
+    with open(file_path, "wb") as buffer:
         buffer.write(contents)
 
     try:
         app_logger.info(f"Processing uploaded PDF: {file.filename} (doc_id: {doc_id})")
         # Run synchronous PDF parsing / PageIndex polling in a worker thread so the event loop is never blocked
-        tree = await asyncio.to_thread(doc_service.process_pdf, temp_path)
+        tree = await asyncio.to_thread(doc_service.process_pdf, file_path)
         tree = llm_service.normalize_tree(tree)
         page_count = len(tree) if isinstance(tree, list) else 1
 
@@ -98,9 +101,8 @@ async def upload_pdf(
         app_logger.error(f"Failed to process PDF {file.filename}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-
+        # We no longer remove the file as requested by the user to keep it in the data folder
+        pass
 
 @router.get("/documents/{doc_id}/status", response_model=DocumentStatusResponse)
 async def get_document_status(

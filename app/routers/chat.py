@@ -169,3 +169,38 @@ async def get_chat_history(
     if history is None:
         raise HTTPException(status_code=404, detail="Chat ID not found")
     return ChatHistoryResponse(history=history)
+
+
+# ── Long Memory Endpoints ─────────────────────────────────────────────────
+
+@router.get("/chats")
+async def list_all_chats(storage: MemoryStorage = Depends(get_storage)):
+    """Return all persisted chat sessions ordered by most recent."""
+    chats = storage.list_chats()
+    return {"chats": chats}
+
+
+@router.delete("/chat/{chat_id}")
+async def delete_chat(
+    chat_id: str,
+    storage: MemoryStorage = Depends(get_storage),
+):
+    """Permanently delete a chat session and all its messages."""
+    storage.delete_chat(chat_id)
+    app_logger.info(f"Deleted chat session: {chat_id}")
+    return {"message": "Chat deleted", "chat_id": chat_id}
+
+
+class RenameChatRequest(BaseModel):
+    title: str
+
+
+@router.patch("/chat/{chat_id}/title")
+async def rename_chat(
+    chat_id: str,
+    body: RenameChatRequest,
+    storage: MemoryStorage = Depends(get_storage),
+):
+    """Update the display title of a chat session."""
+    storage.update_chat_title(chat_id, body.title)
+    return {"message": "Title updated", "chat_id": chat_id, "title": body.title}

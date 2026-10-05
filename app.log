@@ -779,3 +779,222 @@ For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/St
 You have depleted your monthly included credits. Purchase pre-paid credits to continue using Inference Providers. Alternatively, subscribe to PRO to get 20x more included usage.
 2026-10-05 20:27:06 | INFO     | app:on_startup | Vectorless RAG API service started.
 2026-10-05 20:27:41 | INFO     | app:on_startup | Vectorless RAG API service started.
+2026-10-05 20:40:27 | INFO     | chat:create_chat | Created new chat session: 777cc0a5-05e8-4456-b421-f4dbedf0602b
+2026-10-05 20:40:33 | INFO     | llm_service:__init__ | Initialized LLMService via Hugging Face | Retrieval: meta-llama/Llama-3.1-8B-Instruct | Chat: Qwen/Qwen2.5-72B-Instruct
+2026-10-05 20:40:33 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=777cc0a5-05e8-4456-b421-f4dbedf0602b document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 20:40:47 | INFO     | documents:upload_pdf | Associated document d2561f32-9d6d-473f-8cc7-4ce284041578 ('2404.17723v2.pdf') with chat 777cc0a5-05e8-4456-b421-f4dbedf0602b in indexing state.
+2026-10-05 20:40:47 | INFO     | documents:upload_pdf | Processing uploaded PDF: 2404.17723v2.pdf (doc_id: d2561f32-9d6d-473f-8cc7-4ce284041578)
+2026-10-05 20:40:47 | INFO     | document_service:process_pdf | Submitting PDF to PageIndex with key ending in 389f...
+2026-10-05 20:40:50 | INFO     | document_service:process_pdf | Polling PageIndex tree status for doc_id: pi-cmuvjcznc00650bp1g4lqffaf...
+2026-10-05 20:42:41 | WARNING  | document_service:process_pdf | PageIndex returned empty or incomplete tree. Using local parser fallback.
+2026-10-05 20:42:41 | INFO     | document_service:_local_pdf_parse | Extracting document structure locally via PyMuPDF for: temp_d2561f32-9d6d-473f-8cc7-4ce284041578_2404.17723v2.pdf
+2026-10-05 20:42:41 | INFO     | document_service:process_pdf | [PERF] indexing_fallback=pymupdf total=114.21s sections=14
+2026-10-05 20:42:41 | INFO     | documents:upload_pdf | [PERF] upload_document doc_id=d2561f32-9d6d-473f-8cc7-4ce284041578 filename='2404.17723v2.pdf' cache_hit=False duration=114.26s pages=14 sections=14
+2026-10-05 20:42:41 | INFO     | chat:attach_document_to_chat | Attached document d2561f32-9d6d-473f-8cc7-4ce284041578 to chat session 777cc0a5-05e8-4456-b421-f4dbedf0602b
+2026-10-05 20:42:41 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=777cc0a5-05e8-4456-b421-f4dbedf0602b document_id=d2561f32-9d6d-473f-8cc7-4ce284041578 document_status=ready tree_ready=True mode=pageindex deep_analysis=False
+2026-10-05 20:42:44 | INFO     | llm_service:llm_tree_search | [PERF] tree_search duration=2.58s matched_nodes=['sec_4fbedbee', 'sec_27ff2e53'] sections_considered=14 model=meta-llama/Llama-3.1-8B-Instruct
+2026-10-05 20:42:44 | INFO     | rag_pipeline:answer_query_stream | [PERF] rag_pipeline retrieval_time=2.58s nodes_matched=2 deep_analysis=False
+2026-10-05 20:42:47 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation TTFT=2.96s model=Qwen/Qwen2.5-72B-Instruct max_tokens=500
+2026-10-05 20:43:17 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation total=32.79s TTFT=2.96s generation=29.83s output_chars=2515 context_chars=5275 context_tokens_est=1318 nodes=2
+2026-10-05 20:44:03 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=777cc0a5-05e8-4456-b421-f4dbedf0602b document_id=d2561f32-9d6d-473f-8cc7-4ce284041578 document_status=ready tree_ready=True mode=pageindex deep_analysis=False
+2026-10-05 20:44:05 | INFO     | llm_service:llm_tree_search | [PERF] tree_search duration=2.28s matched_nodes=['sec_3a4561a4', 'sec_4fbedbee'] sections_considered=14 model=meta-llama/Llama-3.1-8B-Instruct
+2026-10-05 20:44:05 | INFO     | rag_pipeline:answer_query_stream | [PERF] rag_pipeline retrieval_time=2.28s nodes_matched=2 deep_analysis=False
+2026-10-05 20:44:07 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation TTFT=2.55s model=Qwen/Qwen2.5-72B-Instruct max_tokens=1100
+2026-10-05 20:45:07 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation total=61.74s TTFT=2.55s generation=59.19s output_chars=4748 context_chars=5261 context_tokens_est=1315 nodes=2
+2026-10-05 20:45:15 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=777cc0a5-05e8-4456-b421-f4dbedf0602b document_id=d2561f32-9d6d-473f-8cc7-4ce284041578 document_status=ready tree_ready=True mode=pageindex deep_analysis=False
+2026-10-05 20:45:17 | INFO     | llm_service:llm_tree_search | [PERF] tree_search duration=2.46s matched_nodes=['sec_3a4561a4', 'sec_7a56b918'] sections_considered=14 model=meta-llama/Llama-3.1-8B-Instruct
+2026-10-05 20:45:17 | INFO     | rag_pipeline:answer_query_stream | [PERF] rag_pipeline retrieval_time=2.46s nodes_matched=2 deep_analysis=False
+2026-10-05 20:45:19 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation TTFT=2.11s model=Qwen/Qwen2.5-72B-Instruct max_tokens=500
+2026-10-05 20:45:48 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation total=31.23s TTFT=2.11s generation=29.13s output_chars=1354 context_chars=5146 context_tokens_est=1286 nodes=2
+2026-10-05 20:45:55 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=777cc0a5-05e8-4456-b421-f4dbedf0602b document_id=d2561f32-9d6d-473f-8cc7-4ce284041578 document_status=ready tree_ready=True mode=pageindex deep_analysis=False
+2026-10-05 20:45:57 | INFO     | llm_service:llm_tree_search | [PERF] tree_search duration=2.19s matched_nodes=['sec_e334a943', 'sec_914266c8'] sections_considered=14 model=meta-llama/Llama-3.1-8B-Instruct
+2026-10-05 20:45:57 | INFO     | rag_pipeline:answer_query_stream | [PERF] rag_pipeline retrieval_time=2.19s nodes_matched=2 deep_analysis=False
+2026-10-05 20:45:59 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation TTFT=1.33s model=Qwen/Qwen2.5-72B-Instruct max_tokens=1100
+2026-10-05 20:55:43 | INFO     | app:on_startup | Vectorless RAG API service started.
+2026-10-05 20:56:36 | INFO     | llm_service:__init__ | Initialized LLMService via Hugging Face | Retrieval: meta-llama/Llama-3.1-8B-Instruct | Chat: Qwen/Qwen2.5-72B-Instruct
+2026-10-05 20:56:36 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=777cc0a5-05e8-4456-b421-f4dbedf0602b document_id=d2561f32-9d6d-473f-8cc7-4ce284041578 document_status=none tree_ready=False mode=error deep_analysis=False
+2026-10-05 20:56:42 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=777cc0a5-05e8-4456-b421-f4dbedf0602b document_id=d2561f32-9d6d-473f-8cc7-4ce284041578 document_status=none tree_ready=False mode=error deep_analysis=False
+2026-10-05 20:59:57 | INFO     | app:on_startup | Vectorless RAG API service started.
+2026-10-05 21:00:14 | INFO     | app:on_startup | Vectorless RAG API service started.
+2026-10-05 21:03:06 | INFO     | chat:create_chat | Created new chat session: 0e9e8489-cf03-4164-8c27-91481090e4b1
+2026-10-05 21:03:34 | INFO     | chat:create_chat | Created new chat session: ce717a76-61fa-4ece-adf6-a5cd18e7ddfd
+2026-10-05 21:03:34 | INFO     | chat:delete_chat | Deleted chat session: b66899dd-9e43-414c-b8ab-bef23e134939
+2026-10-05 21:03:35 | INFO     | chat:create_chat | Created new chat session: d1936f4c-35a3-4093-bcae-a36cd39b65ed
+2026-10-05 21:03:35 | INFO     | chat:delete_chat | Deleted chat session: ce717a76-61fa-4ece-adf6-a5cd18e7ddfd
+2026-10-05 21:03:35 | INFO     | chat:delete_chat | Deleted chat session: 777cc0a5-05e8-4456-b421-f4dbedf0602b
+2026-10-05 21:03:36 | INFO     | chat:delete_chat | Deleted chat session: 1c31df9a-00ce-4cb5-9200-de7b748921ae
+2026-10-05 21:03:36 | INFO     | chat:delete_chat | Deleted chat session: 691c18f6-314d-456e-9f13-2131a9028874
+2026-10-05 21:03:40 | INFO     | llm_service:__init__ | Initialized LLMService via Hugging Face | Retrieval: meta-llama/Llama-3.1-8B-Instruct | Chat: Qwen/Qwen2.5-72B-Instruct
+2026-10-05 21:03:40 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=d1936f4c-35a3-4093-bcae-a36cd39b65ed document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 21:04:03 | INFO     | chat:create_chat | Created new chat session: 8f2c80f1-ca87-46d5-bb22-2a30496219de
+2026-10-05 21:04:03 | INFO     | chat:delete_chat | Deleted chat session: d1936f4c-35a3-4093-bcae-a36cd39b65ed
+2026-10-05 21:04:05 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=8f2c80f1-ca87-46d5-bb22-2a30496219de document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 21:06:09 | INFO     | app:on_startup | Vectorless RAG API service started.
+2026-10-05 21:12:55 | INFO     | app:on_startup | Vectorless RAG API service started.
+2026-10-05 21:13:40 | INFO     | llm_service:__init__ | Initialized LLMService via Hugging Face | Retrieval: meta-llama/Llama-3.1-8B-Instruct | Chat: Qwen/Qwen2.5-7B-Instruct
+2026-10-05 21:13:40 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=8f2c80f1-ca87-46d5-bb22-2a30496219de document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 21:13:40 | ERROR    | llm_service:generate_conversational_stream | Error in generate_conversational_stream: (Request ID: Root=1-6ac3e8d4-55cfc48a2919a9ec47176950;72d15928-25e1-4aa2-a2e4-55460c3c6ce8)
+
+Bad request:
+{'message': "The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_supported'}
+Traceback (most recent call last):
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/utils/_http.py", line 846, in hf_raise_for_status
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/httpx2/_models.py", line 827, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx2.HTTPStatusError: Client error '400 Bad Request' for url 'https://router.huggingface.co/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/app/services/llm_service.py", line 1078, in generate_conversational_stream
+    stream = await self.client.chat_completion(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py", line 953, in chat_completion
+    data = await self._inner_post(request_parameters, stream=stream)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py", line 281, in _inner_post
+    hf_raise_for_status(response)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/utils/_http.py", line 939, in hf_raise_for_status
+    raise _format(BadRequestError, message, response) from e
+huggingface_hub.errors.BadRequestError: (Request ID: Root=1-6ac3e8d4-55cfc48a2919a9ec47176950;72d15928-25e1-4aa2-a2e4-55460c3c6ce8)
+
+Bad request:
+{'message': "The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_supported'}
+2026-10-05 21:13:47 | INFO     | chat:create_chat | Created new chat session: 6a1fbfaf-0074-485c-a48a-332acf2afe68
+2026-10-05 21:13:47 | INFO     | chat:delete_chat | Deleted chat session: 8f2c80f1-ca87-46d5-bb22-2a30496219de
+2026-10-05 21:13:50 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=6a1fbfaf-0074-485c-a48a-332acf2afe68 document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 21:13:50 | ERROR    | llm_service:generate_conversational_stream | Error in generate_conversational_stream: (Request ID: Root=1-6ac3e8de-3ca52e4b397d342d292121eb;ccbf4d78-c10f-4d96-afe1-f19a152e8388)
+
+Bad request:
+{'message': "The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_supported'}
+Traceback (most recent call last):
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/utils/_http.py", line 846, in hf_raise_for_status
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/httpx2/_models.py", line 827, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx2.HTTPStatusError: Client error '400 Bad Request' for url 'https://router.huggingface.co/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/app/services/llm_service.py", line 1078, in generate_conversational_stream
+    stream = await self.client.chat_completion(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py", line 953, in chat_completion
+    data = await self._inner_post(request_parameters, stream=stream)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py", line 281, in _inner_post
+    hf_raise_for_status(response)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/utils/_http.py", line 939, in hf_raise_for_status
+    raise _format(BadRequestError, message, response) from e
+huggingface_hub.errors.BadRequestError: (Request ID: Root=1-6ac3e8de-3ca52e4b397d342d292121eb;ccbf4d78-c10f-4d96-afe1-f19a152e8388)
+
+Bad request:
+{'message': "The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_supported'}
+2026-10-05 21:15:35 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=6a1fbfaf-0074-485c-a48a-332acf2afe68 document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 21:15:35 | ERROR    | llm_service:generate_conversational_stream | Error in generate_conversational_stream: (Request ID: Root=1-6ac3e947-416d4aff10eb94e81628a2f2;f33e2340-69a7-40b0-a8f4-a4f6942234b0)
+
+Bad request:
+{'message': "The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_supported'}
+Traceback (most recent call last):
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/utils/_http.py", line 846, in hf_raise_for_status
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/httpx2/_models.py", line 827, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx2.HTTPStatusError: Client error '400 Bad Request' for url 'https://router.huggingface.co/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/app/services/llm_service.py", line 1078, in generate_conversational_stream
+    stream = await self.client.chat_completion(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py", line 953, in chat_completion
+    data = await self._inner_post(request_parameters, stream=stream)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py", line 281, in _inner_post
+    hf_raise_for_status(response)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/utils/_http.py", line 939, in hf_raise_for_status
+    raise _format(BadRequestError, message, response) from e
+huggingface_hub.errors.BadRequestError: (Request ID: Root=1-6ac3e947-416d4aff10eb94e81628a2f2;f33e2340-69a7-40b0-a8f4-a4f6942234b0)
+
+Bad request:
+{'message': "The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_supported'}
+2026-10-05 21:15:50 | INFO     | chat:create_chat | Created new chat session: 8ca2da80-0529-47f0-8879-75b7777a47b9
+2026-10-05 21:15:50 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=8ca2da80-0529-47f0-8879-75b7777a47b9 document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 21:15:50 | ERROR    | llm_service:generate_conversational_stream | Error in generate_conversational_stream: (Request ID: Root=1-6ac3e956-28a284e338465c9b1050bb1b;23535b9d-5d3d-4b50-86e0-984e229f3c13)
+
+Bad request:
+{'message': "The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_supported'}
+Traceback (most recent call last):
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/utils/_http.py", line 846, in hf_raise_for_status
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/httpx2/_models.py", line 827, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx2.HTTPStatusError: Client error '400 Bad Request' for url 'https://router.huggingface.co/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/app/services/llm_service.py", line 1078, in generate_conversational_stream
+    stream = await self.client.chat_completion(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py", line 953, in chat_completion
+    data = await self._inner_post(request_parameters, stream=stream)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/inference/_generated/_async_client.py", line 281, in _inner_post
+    hf_raise_for_status(response)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/mnt/work/projects/RAG_pageindex/pageindex_RAG/.venv/lib/python3.14/site-packages/huggingface_hub/utils/_http.py", line 939, in hf_raise_for_status
+    raise _format(BadRequestError, message, response) from e
+huggingface_hub.errors.BadRequestError: (Request ID: Root=1-6ac3e956-28a284e338465c9b1050bb1b;23535b9d-5d3d-4b50-86e0-984e229f3c13)
+
+Bad request:
+{'message': "The requested model 'Qwen/Qwen2.5-7B-Instruct' is not supported by any provider you have enabled.", 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_supported'}
+2026-10-05 21:16:19 | INFO     | app:on_startup | Vectorless RAG API service started.
+2026-10-05 21:16:25 | INFO     | llm_service:__init__ | Initialized LLMService via Hugging Face | Retrieval: meta-llama/Llama-3.1-8B-Instruct | Chat: meta-llama/Llama-3.1-8B-Instruct
+2026-10-05 21:16:26 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=test-123 document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 21:17:51 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=8ca2da80-0529-47f0-8879-75b7777a47b9 document_id=None document_status=none tree_ready=False mode=conversational deep_analysis=False
+2026-10-05 21:19:49 | INFO     | documents:upload_pdf | Associated document d276114f-8839-44ad-aa0c-74d7afd6c3eb ('data.pdf') with chat 8ca2da80-0529-47f0-8879-75b7777a47b9 in indexing state.
+2026-10-05 21:19:50 | INFO     | documents:upload_pdf | Processing uploaded PDF: data.pdf (doc_id: d276114f-8839-44ad-aa0c-74d7afd6c3eb)
+2026-10-05 21:19:52 | INFO     | document_service:process_pdf | Submitting PDF to PageIndex with key ending in 389f...
+2026-10-05 21:20:01 | INFO     | document_service:process_pdf | Polling PageIndex tree status for doc_id: pi-cmuvkrdc0008g09mbzryh1z8v...
+2026-10-05 21:21:28 | WARNING  | document_service:process_pdf | PageIndex returned empty or incomplete tree. Using local parser fallback.
+2026-10-05 21:21:28 | INFO     | document_service:_local_pdf_parse | Extracting document structure locally via PyMuPDF for: data/d276114f-8839-44ad-aa0c-74d7afd6c3eb_data.pdf
+2026-10-05 21:21:29 | INFO     | document_service:process_pdf | [PERF] indexing_fallback=pymupdf total=99.15s sections=63
+2026-10-05 21:21:29 | INFO     | documents:upload_pdf | [PERF] upload_document doc_id=d276114f-8839-44ad-aa0c-74d7afd6c3eb filename='data.pdf' cache_hit=False duration=99.56s pages=63 sections=63
+2026-10-05 21:21:29 | INFO     | chat:attach_document_to_chat | Attached document d276114f-8839-44ad-aa0c-74d7afd6c3eb to chat session 8ca2da80-0529-47f0-8879-75b7777a47b9
+2026-10-05 21:21:29 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=8ca2da80-0529-47f0-8879-75b7777a47b9 document_id=d276114f-8839-44ad-aa0c-74d7afd6c3eb document_status=ready tree_ready=True mode=pageindex deep_analysis=False
+2026-10-05 21:21:32 | INFO     | llm_service:llm_tree_search | [PERF] tree_search duration=2.90s matched_nodes=['sec_726d4e7b', 'sec_20077892'] sections_considered=63 model=meta-llama/Llama-3.1-8B-Instruct
+2026-10-05 21:21:32 | INFO     | rag_pipeline:answer_query_stream | [PERF] rag_pipeline retrieval_time=2.90s nodes_matched=2 deep_analysis=False
+2026-10-05 21:21:33 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation TTFT=0.71s model=meta-llama/Llama-3.1-8B-Instruct max_tokens=500
+2026-10-05 21:21:47 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation total=14.57s TTFT=0.71s generation=13.87s output_chars=1909 context_chars=5250 context_tokens_est=1312 nodes=2
+2026-10-05 21:22:32 | INFO     | chat:ask_question | [CHAT ROUTER] conversation_id=8ca2da80-0529-47f0-8879-75b7777a47b9 document_id=d276114f-8839-44ad-aa0c-74d7afd6c3eb document_status=ready tree_ready=True mode=pageindex deep_analysis=False
+2026-10-05 21:22:34 | INFO     | llm_service:llm_tree_search | [PERF] tree_search duration=1.84s matched_nodes=['sec_726d4e7b', 'sec_20077892', 'sec_4d422bc1'] sections_considered=63 model=meta-llama/Llama-3.1-8B-Instruct
+2026-10-05 21:22:34 | INFO     | rag_pipeline:answer_query_stream | [PERF] rag_pipeline retrieval_time=1.84s nodes_matched=3 deep_analysis=False
+2026-10-05 21:22:36 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation TTFT=2.05s model=meta-llama/Llama-3.1-8B-Instruct max_tokens=1100
+2026-10-05 21:23:05 | INFO     | llm_service:generate_answer_stream | [PERF] answer_generation total=31.07s TTFT=2.05s generation=29.02s output_chars=1605 context_chars=6141 context_tokens_est=1535 nodes=3
