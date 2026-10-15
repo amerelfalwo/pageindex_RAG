@@ -75,6 +75,21 @@ async def run_background_indexing(
         )
         storage.set_hash_mapping(content_hash, doc_id)
 
+        # Trigger background knowledge dossier generation and global synthesis
+        try:
+            from core.dependencies import get_memory_service
+            mem_service = get_memory_service()
+            asyncio.create_task(
+                mem_service.generate_document_dossier(
+                    doc_id=doc_id,
+                    filename=filename,
+                    tree=tree,
+                    flat_sections=flat_sections,
+                )
+            )
+        except Exception as mex:
+            app_logger.warning(f"Failed to launch dossier generation for {doc_id}: {mex}")
+
         app_logger.info(
             f"[INDEX] document_id={doc_id} stage=ready duration={total_duration:.2f}s "
             f"method={indexing_method} pages={page_count} sections={section_count}"

@@ -5,8 +5,16 @@ class AskRequest(BaseModel):
     chat_id: str = Field(..., description="Active chat session ID")
     query: str = Field(..., description="User query / question")
     doc_id: Optional[str] = Field(None, description="Optional document ID if attached")
+    doc_ids: Optional[List[str]] = Field(None, description="Optional list of document IDs for multi-doc search")
     doc_name: Optional[str] = Field(None, description="Optional document name if known")
     deep_analysis: Optional[bool] = Field(False, description="Enable deep analysis mode")
+
+class AttachDocRequest(BaseModel):
+    doc_id: str
+    doc_name: Optional[str] = None
+
+class AttachMultipleDocsRequest(BaseModel):
+    doc_ids: List[str]
 
 class UploadResponse(BaseModel):
     message: str = "Success"

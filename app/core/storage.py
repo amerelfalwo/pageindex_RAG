@@ -485,13 +485,35 @@ class MemoryStorage:
             doc = self._documents.get(doc_id)
             doc_name = doc.get("filename") if doc else None
         persistent_db.set_chat_doc(chat_id=chat_id, doc_id=doc_id, doc_name=doc_name)
+        persistent_db.add_chat_document(chat_id=chat_id, doc_id=doc_id, doc_name=doc_name)
+
+    def add_chat_doc(self, chat_id: str, doc_id: str, doc_name: Optional[str] = None) -> None:
+        if not self.chat_exists(chat_id):
+            persistent_db.create_chat(chat_id=chat_id)
+        if doc_name is None:
+            doc = self._documents.get(doc_id)
+            doc_name = doc.get("filename") if doc else None
+        persistent_db.add_chat_document(chat_id=chat_id, doc_id=doc_id, doc_name=doc_name)
 
     def get_chat_doc(self, chat_id: str) -> Optional[str]:
+        # Return primary attached doc or first multi-doc
         meta = persistent_db.get_chat(chat_id)
-        return meta["doc_id"] if meta else None
+        if meta and meta.get("doc_id"):
+            return meta["doc_id"]
+        docs = persistent_db.get_chat_documents(chat_id)
+        return docs[0]["doc_id"] if docs else None
 
-    def remove_chat_doc(self, chat_id: str) -> None:
-        persistent_db.remove_chat_doc(chat_id)
+    def get_chat_docs(self, chat_id: str) -> List[Dict[str, Any]]:
+        return persistent_db.get_chat_documents(chat_id)
+
+    def remove_chat_doc(self, chat_id: str, doc_id: Optional[str] = None) -> None:
+        if doc_id:
+            persistent_db.remove_chat_document(chat_id, doc_id)
+        else:
+            persistent_db.remove_chat_doc(chat_id)
+
+    def clear_chat_docs(self, chat_id: str) -> None:
+        persistent_db.clear_chat_documents(chat_id)
 
     def delete_chat(self, chat_id: str) -> None:
         persistent_db.delete_chat(chat_id)
@@ -501,6 +523,56 @@ class MemoryStorage:
 
     def update_chat_title(self, chat_id: str, title: str) -> None:
         persistent_db.update_chat_title(chat_id=chat_id, title=title)
+
+    # ── session long memory & rolling summaries ─────────────────────────────
+    def set_chat_summary(self, chat_id: str, summary: str, turn_count: int = 0) -> None:
+        persistent_db.set_chat_summary(chat_id=chat_id, summary=summary, turn_count=turn_count)
+
+    def get_chat_summary(self, chat_id: str) -> Optional[Dict[str, Any]]:
+        return persistent_db.get_chat_summary(chat_id=chat_id)
+
+    # ── global knowledge memory & document dossiers ────────────────────────
+    def save_knowledge_dossier(
+        self,
+        doc_id: str,
+        filename: str,
+        executive_summary: str,
+        key_entities: Optional[List[str]] = None,
+        key_findings: Optional[List[str]] = None,
+        topics: Optional[List[str]] = None,
+    ) -> None:
+        persistent_db.save_knowledge_dossier(
+            doc_id=doc_id,
+            filename=filename,
+            executive_summary=executive_summary,
+            key_entities=key_entities,
+            key_findings=key_findings,
+            topics=topics,
+        )
+
+    def get_knowledge_dossier(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        return persistent_db.get_knowledge_dossier(doc_id)
+
+    def list_knowledge_dossiers(self) -> List[Dict[str, Any]]:
+        return persistent_db.list_knowledge_dossiers()
+
+    def delete_knowledge_dossier(self, doc_id: str) -> None:
+        persistent_db.delete_knowledge_dossier(doc_id)
+
+    def save_global_knowledge_summary(
+        self,
+        collective_summary: str,
+        total_documents: int,
+        key_insights: Optional[List[str]] = None,
+    ) -> None:
+        persistent_db.save_global_knowledge_summary(
+            collective_summary=collective_summary,
+            total_documents=total_documents,
+            key_insights=key_insights,
+        )
+
+    def get_global_knowledge_summary(self) -> Optional[Dict[str, Any]]:
+        return persistent_db.get_global_knowledge_summary()
 
 
 # Global singleton storage instance

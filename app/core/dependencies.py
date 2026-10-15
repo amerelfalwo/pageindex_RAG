@@ -23,3 +23,10 @@ def get_rag_pipeline() -> VectorlessRAG:
 
 def get_storage() -> MemoryStorage:
     return storage
+
+
+@lru_cache()
+def get_memory_service() -> 'MemoryService':
+    from services.memory_service import MemoryService
+    return MemoryService(get_llm_service())
+

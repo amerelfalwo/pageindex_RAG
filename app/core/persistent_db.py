@@ -63,6 +63,40 @@ CREATE TABLE IF NOT EXISTS doc_meta (
     created_at      REAL NOT NULL,
     updated_at      REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS chat_documents (
+    chat_id     TEXT NOT NULL REFERENCES chats(chat_id) ON DELETE CASCADE,
+    doc_id      TEXT NOT NULL REFERENCES doc_meta(doc_id) ON DELETE CASCADE,
+    doc_name    TEXT,
+    attached_at REAL NOT NULL,
+    PRIMARY KEY (chat_id, doc_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chat_docs ON chat_documents(chat_id);
+
+CREATE TABLE IF NOT EXISTS chat_summaries (
+    chat_id     TEXT PRIMARY KEY REFERENCES chats(chat_id) ON DELETE CASCADE,
+    summary     TEXT NOT NULL,
+    turn_count  INTEGER DEFAULT 0,
+    updated_at  REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_memory (
+    doc_id            TEXT PRIMARY KEY REFERENCES doc_meta(doc_id) ON DELETE CASCADE,
+    filename          TEXT NOT NULL,
+    executive_summary TEXT,
+    key_entities      TEXT,
+    key_findings      TEXT,
+    topics            TEXT,
+    updated_at        REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS global_knowledge_summary (
+    id                  TEXT PRIMARY KEY,
+    collective_summary  TEXT NOT NULL,
+    total_documents     INTEGER DEFAULT 0,
+    key_insights        TEXT,
+    updated_at          REAL NOT NULL
+);
 """
 
 
@@ -108,6 +142,13 @@ class PersistentDB:
             ]:
                 if col not in existing_cols:
                     conn.execute(f"ALTER TABLE doc_meta ADD COLUMN {col} {col_type} DEFAULT {default_val}")
+
+            # Migrate existing chats.doc_id into chat_documents table
+            conn.execute("""
+                INSERT OR IGNORE INTO chat_documents(chat_id, doc_id, doc_name, attached_at)
+                SELECT chat_id, doc_id, doc_name, created_at FROM chats
+                WHERE doc_id IS NOT NULL AND doc_id != ''
+            """)
 
     # ── chat CRUD ───────────────────────────────────────────────────────────
     def create_chat(self, chat_id: Optional[str] = None, title: Optional[str] = None) -> str:
@@ -255,7 +296,200 @@ class PersistentDB:
         with self._tx() as conn:
             cur = conn.execute("DELETE FROM doc_meta WHERE doc_id=?", (doc_id,))
             conn.execute("UPDATE chats SET doc_id=NULL, doc_name=NULL WHERE doc_id=?", (doc_id,))
+            conn.execute("DELETE FROM chat_documents WHERE doc_id=?", (doc_id,))
+            conn.execute("DELETE FROM knowledge_memory WHERE doc_id=?", (doc_id,))
             return cur.rowcount > 0
+
+    # ── multi-doc session associations ──────────────────────────────────────
+    def add_chat_document(self, chat_id: str, doc_id: str, doc_name: Optional[str] = None) -> None:
+        now = time.time()
+        with self._tx() as conn:
+            conn.execute(
+                """
+                INSERT INTO chat_documents(chat_id, doc_id, doc_name, attached_at)
+                VALUES(?,?,?,?)
+                ON CONFLICT(chat_id, doc_id) DO UPDATE SET
+                    doc_name=COALESCE(excluded.doc_name, chat_documents.doc_name),
+                    attached_at=excluded.attached_at
+                """,
+                (chat_id, doc_id, doc_name, now),
+            )
+            # Maintain backward compatibility on chats table with latest doc
+            conn.execute(
+                "UPDATE chats SET doc_id=?, doc_name=?, updated_at=? WHERE chat_id=?",
+                (doc_id, doc_name, now, chat_id),
+            )
+
+    def remove_chat_document(self, chat_id: str, doc_id: str) -> None:
+        now = time.time()
+        with self._tx() as conn:
+            conn.execute("DELETE FROM chat_documents WHERE chat_id=? AND doc_id=?", (chat_id, doc_id))
+            rem = conn.execute(
+                "SELECT doc_id, doc_name FROM chat_documents WHERE chat_id=? ORDER BY attached_at DESC LIMIT 1",
+                (chat_id,),
+            ).fetchone()
+            if rem:
+                conn.execute(
+                    "UPDATE chats SET doc_id=?, doc_name=?, updated_at=? WHERE chat_id=?",
+                    (rem["doc_id"], rem["doc_name"], now, chat_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE chats SET doc_id=NULL, doc_name=NULL, updated_at=? WHERE chat_id=?",
+                    (now, chat_id),
+                )
+
+    def get_chat_documents(self, chat_id: str) -> List[Dict[str, Any]]:
+        rows = self._conn().execute(
+            """
+            SELECT cd.chat_id, cd.doc_id, cd.doc_name, cd.attached_at,
+                   dm.status, dm.page_count, dm.section_count, dm.filename
+            FROM chat_documents cd
+            LEFT JOIN doc_meta dm ON cd.doc_id = dm.doc_id
+            WHERE cd.chat_id=?
+            ORDER BY cd.attached_at ASC
+            """,
+            (chat_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def clear_chat_documents(self, chat_id: str) -> None:
+        now = time.time()
+        with self._tx() as conn:
+            conn.execute("DELETE FROM chat_documents WHERE chat_id=?", (chat_id,))
+            conn.execute("UPDATE chats SET doc_id=NULL, doc_name=NULL, updated_at=? WHERE chat_id=?", (now, chat_id))
+
+    # ── session long memory & rolling summaries ─────────────────────────────
+    def set_chat_summary(self, chat_id: str, summary: str, turn_count: int = 0) -> None:
+        now = time.time()
+        with self._tx() as conn:
+            conn.execute(
+                """
+                INSERT INTO chat_summaries(chat_id, summary, turn_count, updated_at)
+                VALUES(?,?,?,?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    summary=excluded.summary,
+                    turn_count=excluded.turn_count,
+                    updated_at=excluded.updated_at
+                """,
+                (chat_id, summary, turn_count, now),
+            )
+
+    def get_chat_summary(self, chat_id: str) -> Optional[Dict[str, Any]]:
+        row = self._conn().execute(
+            "SELECT * FROM chat_summaries WHERE chat_id=?", (chat_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    # ── global knowledge memory & document dossiers ────────────────────────
+    def save_knowledge_dossier(
+        self,
+        doc_id: str,
+        filename: str,
+        executive_summary: str,
+        key_entities: Optional[List[str]] = None,
+        key_findings: Optional[List[str]] = None,
+        topics: Optional[List[str]] = None,
+    ) -> None:
+        now = time.time()
+        with self._tx() as conn:
+            conn.execute(
+                """
+                INSERT INTO knowledge_memory(
+                    doc_id, filename, executive_summary, key_entities, key_findings, topics, updated_at
+                )
+                VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(doc_id) DO UPDATE SET
+                    filename=excluded.filename,
+                    executive_summary=excluded.executive_summary,
+                    key_entities=excluded.key_entities,
+                    key_findings=excluded.key_findings,
+                    topics=excluded.topics,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    doc_id,
+                    filename,
+                    executive_summary,
+                    json.dumps(key_entities or []),
+                    json.dumps(key_findings or []),
+                    json.dumps(topics or []),
+                    now,
+                ),
+            )
+
+    def get_knowledge_dossier(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        row = self._conn().execute(
+            "SELECT * FROM knowledge_memory WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        for k in ("key_entities", "key_findings", "topics"):
+            if res.get(k) and isinstance(res[k], str):
+                try:
+                    res[k] = json.loads(res[k])
+                except Exception:
+                    res[k] = []
+        return res
+
+    def list_knowledge_dossiers(self) -> List[Dict[str, Any]]:
+        rows = self._conn().execute(
+            "SELECT * FROM knowledge_memory ORDER BY updated_at DESC"
+        ).fetchall()
+        result = []
+        for r in rows:
+            item = dict(r)
+            for k in ("key_entities", "key_findings", "topics"):
+                if item.get(k) and isinstance(item[k], str):
+                    try:
+                        item[k] = json.loads(item[k])
+                    except Exception:
+                        item[k] = []
+            result.append(item)
+        return result
+
+    def delete_knowledge_dossier(self, doc_id: str) -> None:
+        with self._tx() as conn:
+            conn.execute("DELETE FROM knowledge_memory WHERE doc_id=?", (doc_id,))
+
+    def save_global_knowledge_summary(
+        self,
+        collective_summary: str,
+        total_documents: int,
+        key_insights: Optional[List[str]] = None,
+    ) -> None:
+        now = time.time()
+        gid = "global"
+        with self._tx() as conn:
+            conn.execute(
+                """
+                INSERT INTO global_knowledge_summary(
+                    id, collective_summary, total_documents, key_insights, updated_at
+                )
+                VALUES(?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    collective_summary=excluded.collective_summary,
+                    total_documents=excluded.total_documents,
+                    key_insights=excluded.key_insights,
+                    updated_at=excluded.updated_at
+                """,
+                (gid, collective_summary, total_documents, json.dumps(key_insights or []), now),
+            )
+
+    def get_global_knowledge_summary(self) -> Optional[Dict[str, Any]]:
+        row = self._conn().execute(
+            "SELECT * FROM global_knowledge_summary WHERE id='global'"
+        ).fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        if res.get("key_insights") and isinstance(res["key_insights"], str):
+            try:
+                res["key_insights"] = json.loads(res["key_insights"])
+            except Exception:
+                res["key_insights"] = []
+        return res
 
 
 
