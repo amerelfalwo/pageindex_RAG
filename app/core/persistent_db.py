@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 # ── paths ──────────────────────────────────────────────────────────────────
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _APP_DIR = os.path.dirname(_THIS_DIR)
-DATA_DIR = os.path.join(_APP_DIR, "data")
+DATA_DIR = "/data" if (os.path.exists("/data") and os.access("/data", os.W_OK)) else os.path.join(_APP_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "memory.db")
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -202,6 +202,10 @@ class PersistentDB:
     def add_message(self, chat_id: str, role: str, content: str) -> None:
         now = time.time()
         with self._tx() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO chats(chat_id, title, created_at, updated_at) VALUES(?, 'New research', ?, ?)",
+                (chat_id, now, now),
+            )
             conn.execute(
                 "INSERT INTO messages(chat_id, role, content, created_at) VALUES(?,?,?,?)",
                 (chat_id, role, content, now),

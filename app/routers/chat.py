@@ -273,9 +273,7 @@ async def get_chat_history(
     storage: MemoryStorage = Depends(get_storage),
 ):
     history = storage.get_chat_history(chat_id)
-    if history is None:
-        raise HTTPException(status_code=404, detail="Chat ID not found")
-    return ChatHistoryResponse(history=history)
+    return ChatHistoryResponse(history=history or [])
 
 
 # ── Long Memory & Conversation Management Endpoints ────────────────────────

@@ -6,7 +6,8 @@ from typing import Dict, List, Optional, Any
 
 from core.persistent_db import persistent_db
 
-CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "index_cache")
+_BASE_DATA = "/data" if (os.path.exists("/data") and os.access("/data", os.W_OK)) else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+CACHE_DIR = os.path.join(_BASE_DATA, "index_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 
@@ -454,10 +455,10 @@ class MemoryStorage:
         persistent_db.create_chat(chat_id=cid, title=title)
         return cid
 
-    def get_chat_history(self, chat_id: str) -> Optional[List[Dict[str, str]]]:
-        meta = persistent_db.get_chat(chat_id)
-        if meta is None:
-            return None
+    def get_chat_history(self, chat_id: str) -> List[Dict[str, str]]:
+        if not self.chat_exists(chat_id):
+            persistent_db.create_chat(chat_id=chat_id)
+            return []
         return persistent_db.get_messages(chat_id)
 
     def chat_exists(self, chat_id: str) -> bool:
