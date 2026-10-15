@@ -4,13 +4,17 @@ import time
 import json
 import uuid
 from typing import Optional, List, Dict, Any, Tuple
+from dotenv import load_dotenv
 from huggingface_hub import AsyncInferenceClient
+from openai import AsyncOpenAI
 
 from utils.logger import app_logger
 
+load_dotenv()
+
 
 class LLMService:
-    """Dedicated LLM Service using Hugging Face Serverless Inference API."""
+    """Dedicated LLM Service using Hugging Face Serverless Inference API with Groq automatic fallback."""
 
     def __init__(
         self,
@@ -28,9 +32,45 @@ class LLMService:
         self.summary_model = os.getenv("HF_SUMMARY_MODEL", self.retrieval_model)
 
         self.client = AsyncInferenceClient(token=self.token)
+        self.hf_exhausted = False
+
+        # Groq Fallback Client (used when Hugging Face tokens/credits are depleted)
+        self.groq_api_key = os.getenv("GROQ_API_KEY")
+        self.groq_client: Optional[AsyncOpenAI] = None
+        self.groq_chat_model = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.8-27b")
+        self.groq_retrieval_model = os.getenv("GROQ_RETRIEVAL_MODEL", "qwen/qwen3.8-27b")
+
+        if self.groq_api_key:
+            self.groq_client = AsyncOpenAI(
+                api_key=self.groq_api_key,
+                base_url="https://api.groq.com/openai/v1",
+            )
+            app_logger.info(
+                f"Initialized Groq Fallback Client | Chat: {self.groq_chat_model} | Retrieval: {self.groq_retrieval_model}"
+            )
+
         app_logger.info(
             f"Initialized LLMService via Hugging Face | Retrieval: {self.retrieval_model} | Chat: {self.chat_model}"
         )
+
+    def _is_hf_exhausted(self, exc: Exception) -> bool:
+        """Detect Hugging Face token/credit exhaustion (402 Payment Required, Rate limits)."""
+        err_str = str(exc).lower()
+        if (
+            "402" in err_str
+            or "credit" in err_str
+            or "payment required" in err_str
+            or "quota" in err_str
+            or "rate limit" in err_str
+            or "429" in err_str
+        ):
+            if not self.hf_exhausted:
+                app_logger.warning(
+                    f"[TOKEN DEPLETION] Hugging Face credits exhausted: {exc}. Switching to Groq API fallback."
+                )
+            self.hf_exhausted = True
+            return True
+        return False
 
     def _extract_json(self, raw_text: str) -> dict:
         """Safely extract JSON object from LLM response or codeblock."""
@@ -228,13 +268,33 @@ CONVERSATION HISTORY
 
 {history_text}"""
 
-        response = await self.client.chat_completion(
-            messages=[{"role": "user", "content": prompt}],
-            model=target_model,
-            temperature=0.2,
-            max_tokens=800,
-        )
-        return response.choices[0].message.content or ""
+        if not self.hf_exhausted:
+            try:
+                response = await self.client.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=target_model,
+                    temperature=0.2,
+                    max_tokens=800,
+                )
+                return response.choices[0].message.content or ""
+            except Exception as e:
+                self._is_hf_exhausted(e)
+                app_logger.warning(f"HF summarize_section failed ({e}). Checking Groq fallback...")
+
+        if self.groq_client:
+            try:
+                app_logger.info(f"[FALLBACK] Summarizing section via Groq ({self.groq_chat_model})")
+                groq_resp = await self.groq_client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=self.groq_chat_model,
+                    temperature=0.2,
+                    max_tokens=800,
+                )
+                return groq_resp.choices[0].message.content or ""
+            except Exception as ge:
+                app_logger.error(f"Groq summarize_section fallback failed: {ge}", exc_info=True)
+
+        return ""
 
     async def llm_tree_search(
         self,
@@ -545,19 +605,42 @@ If there is insufficient evidence:
   "node_list": []
 }}"""
 
-        try:
-            response = await self.client.chat_completion(
-                messages=[{"role": "user", "content": prompt}],
-                model=target_model,
-                temperature=0.1,
-                max_tokens=300,
-            )
-            content = response.choices[0].message.content or "{}"
-            result = self._extract_json(content)
-            final_nodes = result.get("node_list", [])
-        except Exception as e:
-            app_logger.error(f"Error during llm_tree_search: {str(e)}", exc_info=True)
-            final_nodes = []
+        final_nodes = []
+        hf_failed = False
+        if not self.hf_exhausted:
+            try:
+                response = await self.client.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=target_model,
+                    temperature=0.1,
+                    max_tokens=300,
+                )
+                content = response.choices[0].message.content or "{}"
+                result = self._extract_json(content)
+                final_nodes = result.get("node_list", [])
+            except Exception as e:
+                self._is_hf_exhausted(e)
+                hf_failed = True
+                app_logger.warning(f"HuggingFace tree search failed ({e}). Checking Groq fallback...")
+
+        if (self.hf_exhausted or hf_failed) and self.groq_client:
+            try:
+                app_logger.info(
+                    f"[FALLBACK] Executing tree search via Groq ({self.groq_retrieval_model})"
+                )
+                groq_resp = await self.groq_client.chat.completions.create(
+                    model=self.groq_retrieval_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=300,
+                )
+                content = groq_resp.choices[0].message.content or "{}"
+                result = self._extract_json(content)
+                final_nodes = result.get("node_list", [])
+                target_model = f"{self.groq_retrieval_model} (Groq)"
+            except Exception as ge:
+                app_logger.error(f"Groq fallback tree search failed: {ge}", exc_info=True)
+                final_nodes = []
 
         t_search = time.monotonic() - t_search_start
         app_logger.info(
@@ -647,7 +730,8 @@ If there is insufficient evidence:
 
         effective_doc_name = doc_name or "Uploaded Document"
 
-        system_prompt = f"""You are a production-grade document intelligence assistant operating inside a Retrieval-Augmented Generation (RAG) system.
+        system_prompt = f"""You are Atlas, a production-grade document intelligence assistant operating inside a Retrieval-Augmented Generation (RAG) system.
+Your name is Atlas. When asked about your identity, name, or purpose, introduce yourself clearly as Atlas, the Document Intelligence research assistant.
 
 Your job is to answer the user's question using the supplied document evidence and conversation context while minimizing hallucinations and preserving factual accuracy.
 
@@ -997,46 +1081,87 @@ Return only the final user-facing answer."""
         t_gen_start = time.monotonic()
         t_first_token = None
         total_chars = 0
+        hf_stream_failed = False
 
-        try:
-            stream = await self.client.chat_completion(
-                messages=messages,
-                model=target_model,
-                temperature=0.2,
-                max_tokens=max_out_tokens,
-                stream=True,
-            )
+        if not self.hf_exhausted:
+            try:
+                stream = await self.client.chat_completion(
+                    messages=messages,
+                    model=target_model,
+                    temperature=0.2,
+                    max_tokens=max_out_tokens,
+                    stream=True,
+                )
 
-            async for chunk in stream:
-                if chunk.choices and len(chunk.choices) > 0:
-                    delta = chunk.choices[0].delta.content
-                    if delta is not None:
-                        if t_first_token is None:
-                            t_first_token = time.monotonic()
-                            ttft = t_first_token - t_gen_start
-                            app_logger.info(f"[PERF] answer_generation TTFT={ttft:.2f}s model={target_model} max_tokens={max_out_tokens}")
-                        total_chars += len(delta)
-                        yield delta
+                async for chunk in stream:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta.content
+                        if delta is not None:
+                            if t_first_token is None:
+                                t_first_token = time.monotonic()
+                                ttft = t_first_token - t_gen_start
+                                app_logger.info(f"[PERF] answer_generation TTFT={ttft:.2f}s model={target_model} max_tokens={max_out_tokens}")
+                            total_chars += len(delta)
+                            yield delta
 
-            t_gen_end = time.monotonic()
-            ttft = (t_first_token - t_gen_start) if t_first_token else 0
-            gen_duration = (t_gen_end - t_first_token) if t_first_token else 0
-            total_duration = t_gen_end - t_gen_start
-            context_chars = len(context_msg)
-            context_tokens_est = context_chars // 4
-            app_logger.info(
-                f"[PERF] answer_generation total={total_duration:.2f}s TTFT={ttft:.2f}s "
-                f"generation={gen_duration:.2f}s output_chars={total_chars} "
-                f"context_chars={context_chars} context_tokens_est={context_tokens_est} nodes={len(nodes)}"
-            )
-        except Exception as e:
-            app_logger.error(f"Error in generate_answer_stream: {str(e)}", exc_info=True)
-            is_arabic = any("\u0600" <= c <= "\u06ff" for c in query)
-            if "402" in str(e) or "credits" in str(e).lower():
-                err_msg = "عذراً، تم استهلاك رصيد الاستخدام الشهري للنموذج (402 Payment Required)." if is_arabic else "Sorry, monthly included model credits are depleted (402 Payment Required)."
-            else:
-                err_msg = f"عذراً، حدث خطأ أثناء الاتصال بالنموذج ({type(e).__name__}). يرجى المحاولة لاحقاً." if is_arabic else f"Sorry, model service error occurred ({type(e).__name__}). Please try again."
-            yield err_msg
+                t_gen_end = time.monotonic()
+                ttft = (t_first_token - t_gen_start) if t_first_token else 0
+                gen_duration = (t_gen_end - t_first_token) if t_first_token else 0
+                total_duration = t_gen_end - t_gen_start
+                context_chars = len(context_msg)
+                context_tokens_est = context_chars // 4
+                app_logger.info(
+                    f"[PERF] answer_generation total={total_duration:.2f}s TTFT={ttft:.2f}s "
+                    f"generation={gen_duration:.2f}s output_chars={total_chars} "
+                    f"context_chars={context_chars} context_tokens_est={context_tokens_est} nodes={len(nodes)}"
+                )
+                return
+            except Exception as e:
+                self._is_hf_exhausted(e)
+                hf_stream_failed = True
+                app_logger.warning(f"HuggingFace stream failed ({e}). Checking Groq fallback...")
+
+        # Automatic Groq fallback
+        if (self.hf_exhausted or hf_stream_failed) and self.groq_client:
+            try:
+                app_logger.info(f"[FALLBACK] Generating answer stream via Groq ({self.groq_chat_model})")
+                groq_stream = await self.groq_client.chat.completions.create(
+                    model=self.groq_chat_model,
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=max_out_tokens,
+                    stream=True,
+                )
+                async for chunk in groq_stream:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta.content
+                        if delta is not None:
+                            if t_first_token is None:
+                                t_first_token = time.monotonic()
+                                ttft = t_first_token - t_gen_start
+                                app_logger.info(f"[PERF-GROQ] answer_generation TTFT={ttft:.2f}s model={self.groq_chat_model}")
+                            total_chars += len(delta)
+                            yield delta
+
+                t_gen_end = time.monotonic()
+                ttft = (t_first_token - t_gen_start) if t_first_token else 0
+                gen_duration = (t_gen_end - t_first_token) if t_first_token else 0
+                total_duration = t_gen_end - t_gen_start
+                app_logger.info(
+                    f"[PERF-GROQ] answer_generation total={total_duration:.2f}s TTFT={ttft:.2f}s "
+                    f"generation={gen_duration:.2f}s output_chars={total_chars} model={self.groq_chat_model}"
+                )
+                return
+            except Exception as ge:
+                app_logger.error(f"Groq fallback stream also failed: {ge}", exc_info=True)
+
+        is_arabic = any("\u0600" <= c <= "\u06ff" for c in query)
+        err_msg = (
+            "عذراً، حدث خطأ أثناء الاتصال بالنماذج. يرجى المحاولة لاحقاً."
+            if is_arabic
+            else "Sorry, an error occurred while connecting to model providers. Please try again."
+        )
+        yield err_msg
 
     async def generate_conversational_stream(
         self,
@@ -1045,7 +1170,7 @@ Return only the final user-facing answer."""
         model: Optional[str] = None,
     ):
         """Conversational stream when no document is attached yet.
-        Uses the smaller/faster retrieval model for low-latency chat.
+        Uses the smaller/faster retrieval model for low-latency chat, with automatic Groq failover.
         """
         # Use chat_model (Qwen2.5-7B from HF_CHAT_MODEL env) — fast and capable for conversational use
         target_model = model or self.chat_model
@@ -1060,7 +1185,8 @@ Return only the final user-facing answer."""
         is_arabic_query = any("\u0600" <= c <= "\u06ff" for c in query)
         lang_rule = "Respond in Arabic (فصحى طبيعية)." if is_arabic_query else "Respond in English."
 
-        system_prompt = f"""You are a helpful AI assistant.
+        system_prompt = f"""You are Atlas, a professional document intelligence and research assistant.
+Your name is Atlas (أطلس). When asked about your identity or name (e.g., "من أنت؟" or "ما اسمك؟" or "who are you?"), introduce yourself clearly as Atlas, a document intelligence and research assistant designed to understand documents and discover knowledge.
 {lang_rule}
 Always match the user's language.
 Be concise and accurate. Never invent facts.
@@ -1074,24 +1200,49 @@ If the user asks about a document and none is uploaded, tell them to upload a PD
             {"role": "user", "content": query},
         ]
 
-        try:
-            stream = await self.client.chat_completion(
-                messages=messages,
-                model=target_model,
-                temperature=0.6,
-                stream=True,
-            )
+        hf_stream_failed = False
+        if not self.hf_exhausted:
+            try:
+                stream = await self.client.chat_completion(
+                    messages=messages,
+                    model=target_model,
+                    temperature=0.6,
+                    stream=True,
+                )
 
-            async for chunk in stream:
-                if chunk.choices and len(chunk.choices) > 0:
-                    delta = chunk.choices[0].delta.content
-                    if delta is not None:
-                        yield delta
-        except Exception as e:
-            app_logger.error(f"Error in generate_conversational_stream: {str(e)}", exc_info=True)
-            is_arabic = any("\u0600" <= c <= "\u06ff" for c in query)
-            if "402" in str(e) or "credits" in str(e).lower():
-                err_msg = "عذراً، تم استهلاك رصيد الاستخدام الشهري للنموذج (402 Payment Required)." if is_arabic else "Sorry, monthly included model credits are depleted (402 Payment Required)."
-            else:
-                err_msg = f"عذراً، خدمة النماذج غير متاحة حالياً ({type(e).__name__}). يرجى المحاولة لاحقاً." if is_arabic else f"Sorry, the model service is currently unreachable ({type(e).__name__}). Please try again."
-            yield err_msg
+                async for chunk in stream:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta.content
+                        if delta is not None:
+                            yield delta
+                return
+            except Exception as e:
+                self._is_hf_exhausted(e)
+                hf_stream_failed = True
+                app_logger.warning(f"HF conversational stream failed ({e}). Checking Groq fallback...")
+
+        if (self.hf_exhausted or hf_stream_failed) and self.groq_client:
+            try:
+                app_logger.info(f"[FALLBACK] Conversational stream via Groq ({self.groq_chat_model})")
+                groq_stream = await self.groq_client.chat.completions.create(
+                    model=self.groq_chat_model,
+                    messages=messages,
+                    temperature=0.6,
+                    stream=True,
+                )
+                async for chunk in groq_stream:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta.content
+                        if delta is not None:
+                            yield delta
+                return
+            except Exception as ge:
+                app_logger.error(f"Groq conversational fallback failed: {ge}", exc_info=True)
+
+        is_arabic = any("\u0600" <= c <= "\u06ff" for c in query)
+        err_msg = (
+            "عذراً، خدمة النماذج غير متاحة حالياً. يرجى المحاولة لاحقاً."
+            if is_arabic
+            else "Sorry, the model service is currently unreachable. Please try again."
+        )
+        yield err_msg

@@ -305,3 +305,99 @@ async def retry_document_indexing(
         status="indexing",
         page_count=0,
     )
+
+
+@router.get("/documents")
+async def list_documents(storage: MemoryStorage = Depends(get_storage)):
+    """List all ingested documents with status and metadata."""
+    docs = storage.list_documents()
+    return {"documents": docs}
+
+
+@router.get("/documents/{document_id}")
+async def get_document_details(
+    document_id: str,
+    storage: MemoryStorage = Depends(get_storage),
+):
+    """Retrieve details and operational metadata for a specific document."""
+    doc = storage.get_document(document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document ID not found.")
+    return {
+        "doc_id": doc.get("doc_id", document_id),
+        "document_id": doc.get("doc_id", document_id),
+        "filename": doc.get("filename", "document.pdf"),
+        "status": doc.get("status", "unknown"),
+        "progress": doc.get("progress", 100 if doc.get("status") == "ready" else 0),
+        "current_stage": doc.get("current_stage", "Ready"),
+        "page_count": doc.get("page_count", 0),
+        "section_count": doc.get("section_count", 0),
+        "indexing_method": doc.get("indexing_method"),
+        "duration": doc.get("duration"),
+        "error": doc.get("error"),
+        "created_at": doc.get("created_at"),
+    }
+
+
+@router.get("/documents/{document_id}/tree")
+async def get_document_tree(
+    document_id: str,
+    storage: MemoryStorage = Depends(get_storage),
+    doc_service: DocumentService = Depends(get_document_service),
+    llm_service: LLMService = Depends(get_llm_service),
+):
+    """Retrieve the hierarchical section tree for a document."""
+    doc = storage.get_document(document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document ID not found.")
+
+    tree = storage.get_document_tree(document_id)
+    if tree is None and doc.get("file_path") and os.path.exists(doc["file_path"]):
+        # Reconstruct tree using local parser and cache
+        tree = doc_service._local_pdf_parse(doc["file_path"])
+        tree = llm_service.normalize_tree(tree)
+        storage.set_document_ready(
+            doc_id=document_id,
+            tree=tree,
+            page_count=doc.get("page_count") or len(tree),
+            section_count=len(tree),
+            indexing_method=doc.get("indexing_method") or "pymupdf",
+            filename=doc.get("filename"),
+            file_path=doc.get("file_path"),
+        )
+
+    if tree is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Document tree not found or indexing is still in progress."
+        )
+
+    return {
+        "doc_id": document_id,
+        "filename": doc.get("filename", "document.pdf"),
+        "tree": tree,
+    }
+
+
+
+@router.delete("/documents/{document_id}")
+async def delete_document(
+    document_id: str,
+    storage: MemoryStorage = Depends(get_storage),
+):
+    """Permanently delete a document, its cached index, and local file."""
+    doc = storage.get_document(document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document ID not found.")
+
+    file_path = doc.get("file_path")
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            app_logger.warning(f"Could not remove document file {file_path}: {e}")
+
+    storage.delete_document(document_id)
+    app_logger.info(f"Deleted document {document_id}")
+    return {"message": "Document deleted successfully", "doc_id": document_id}
+

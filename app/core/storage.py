@@ -281,6 +281,26 @@ class MemoryStorage:
         doc["error"] = None
         self._trees[doc_id] = tree
 
+        # Persist index cache by doc_id
+        cache_path = os.path.join(CACHE_DIR, f"{doc_id}.json")
+        try:
+            payload = {
+                "doc_id": doc_id,
+                "filename": doc.get("filename"),
+                "tree": tree,
+                "page_count": doc.get("page_count", 1),
+                "section_count": doc.get("section_count", len(tree) if isinstance(tree, list) else 0),
+                "indexing_method": doc.get("indexing_method"),
+                "duration": doc.get("duration"),
+                "node_map": self._node_maps.get(doc_id),
+                "flat_sections": self._flat_sections.get(doc_id),
+                "created_at": doc.get("created_at", time.time()),
+            }
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+        except Exception:
+            pass
+
         persistent_db.upsert_doc_meta(
             doc_id=doc_id,
             filename=doc["filename"],
@@ -356,19 +376,25 @@ class MemoryStorage:
                 "updated_at": db_meta.get("updated_at", time.time()),
             }
             if doc_obj["status"] == "ready":
-                cache_path = os.path.join(CACHE_DIR, f"{doc_obj['content_hash']}.json") if doc_obj.get("content_hash") else None
-                if cache_path and os.path.exists(cache_path):
-                    try:
-                        with open(cache_path, "r", encoding="utf-8") as f:
-                            cached = json.load(f)
-                        doc_obj["tree"] = cached.get("tree")
-                        self._trees[doc_id] = cached.get("tree")
-                        if cached.get("node_map"):
-                            self._node_maps[doc_id] = cached["node_map"]
-                        if cached.get("flat_sections"):
-                            self._flat_sections[doc_id] = cached["flat_sections"]
-                    except Exception:
-                        pass
+                candidates = [f"{doc_id}.json"]
+                if doc_obj.get("content_hash"):
+                    candidates.append(f"{doc_obj['content_hash']}.json")
+                for c_file in candidates:
+                    cache_path = os.path.join(CACHE_DIR, c_file)
+                    if os.path.exists(cache_path):
+                        try:
+                            with open(cache_path, "r", encoding="utf-8") as f:
+                                cached = json.load(f)
+                            doc_obj["tree"] = cached.get("tree")
+                            self._trees[doc_id] = cached.get("tree")
+                            if cached.get("node_map"):
+                                self._node_maps[doc_id] = cached["node_map"]
+                            if cached.get("flat_sections"):
+                                self._flat_sections[doc_id] = cached["flat_sections"]
+                            break
+                        except Exception:
+                            pass
+
             self._documents[doc_id] = doc_obj
             return doc_obj
         return None
@@ -391,6 +417,34 @@ class MemoryStorage:
         if doc_id in self._documents and self._documents[doc_id].get("status") == "ready" and self._documents[doc_id].get("tree"):
             return True
         return doc_id in self._trees
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        db_docs = persistent_db.list_docs()
+        results = []
+        for d in db_docs:
+            doc_id = d["doc_id"]
+            if doc_id in self._documents:
+                mem = self._documents[doc_id]
+                merged = {**d, **{k: v for k, v in mem.items() if k != "tree"}}
+                results.append(merged)
+            else:
+                results.append(d)
+        return results
+
+    def get_document_tree(self, doc_id: str) -> Optional[Any]:
+        doc = self.get_document(doc_id)
+        if doc and doc.get("tree") is not None:
+            return doc["tree"]
+        return self._trees.get(doc_id)
+
+    def delete_document(self, doc_id: str) -> bool:
+        self._documents.pop(doc_id, None)
+        self._trees.pop(doc_id, None)
+        self._node_maps.pop(doc_id, None)
+        self._flat_sections.pop(doc_id, None)
+        self._active_tasks.pop(doc_id, None)
+        return persistent_db.delete_doc(doc_id)
+
 
     # ──────────────────────────────────────────────────────────────────────
     # Chat operations  (all backed by SQLite now)

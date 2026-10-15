@@ -18,9 +18,9 @@ load_dotenv()
 
 # App initialization
 app = FastAPI(
-    title="Vectorless RAG API",
-    description="Hierarchical Tree Search Document Analysis API with Multimodal Support",
-    version="1.0.0",
+    title="Atlas - Document Intelligence API",
+    description="Atlas Hierarchical Tree Search Document Analysis API with Multimodal Support",
+    version="2.0.0",
 )
 
 # Static files for extracted document images

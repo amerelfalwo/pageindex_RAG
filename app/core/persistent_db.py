@@ -251,6 +251,13 @@ class PersistentDB:
         ).fetchone()
         return dict(row) if row else None
 
+    def delete_doc(self, doc_id: str) -> bool:
+        with self._tx() as conn:
+            cur = conn.execute("DELETE FROM doc_meta WHERE doc_id=?", (doc_id,))
+            conn.execute("UPDATE chats SET doc_id=NULL, doc_name=NULL WHERE doc_id=?", (doc_id,))
+            return cur.rowcount > 0
+
+
 
 # Global singleton
 persistent_db = PersistentDB()
