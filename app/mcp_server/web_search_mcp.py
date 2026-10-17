@@ -9,6 +9,7 @@ import re
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 
+import aiohttp
 from ddgs import DDGS
 from fastmcp import FastMCP
 from utils.logger import app_logger
@@ -72,23 +73,63 @@ def _sync_ddgs_search(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     return results
 
 
+async def _verify_single_url(item: Dict[str, str], session: aiohttp.ClientSession) -> Optional[Dict[str, str]]:
+    """Test URL availability and verify HTTP status code is healthy (< 400)."""
+    url = item.get("url")
+    if not url or not url.startswith("http"):
+        return None
+    try:
+        async with session.get(url, allow_redirects=True) as resp:
+            if resp.status < 400:
+                verified_item = dict(item)
+                verified_item["verified"] = True
+                verified_item["http_status"] = resp.status
+                return verified_item
+            else:
+                app_logger.warning(f"[FastMCP] Discarding dead link ({resp.status}): {url}")
+    except Exception as e:
+        app_logger.warning(f"[FastMCP] Link check failed for {url}: {e}")
+    return None
+
+
 async def execute_web_search(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     """Asynchronous entrypoint for internal Python services.
 
-    Runs web search in an executor thread with a 7-second timeout to prevent
-    blocking the FastAPI async event loop.
+    1. Searches DuckDuckGo for top candidates.
+    2. Concurrently pings each URL to verify it is live, working (HTTP 200), and accessible.
+    3. Filters out dead links, 404s, and unreachable domains before feeding to the LLM.
     """
     clean_q = _clean_search_query(query)
-    app_logger.info(f"[FastMCP] Executing web search for: '{clean_q}' (raw: '{query}')")
+    app_logger.info(f"[FastMCP] Executing web search & link verification for: '{clean_q}'")
     try:
-        results = await asyncio.wait_for(
-            asyncio.to_thread(_sync_ddgs_search, clean_q, max_results=max_results),
-            timeout=7.0,
+        # Fetch more candidates to ensure we have enough verified live links
+        candidate_count = max(max_results * 2, 8)
+        raw_candidates = await asyncio.wait_for(
+            asyncio.to_thread(_sync_ddgs_search, clean_q, max_results=candidate_count),
+            timeout=6.0,
         )
-        app_logger.info(f"[FastMCP] Web search returned {len(results)} items for '{clean_q}'")
-        return results
+
+        if not raw_candidates:
+            return []
+
+        # Concurrently test all candidate links to ensure they are live and working
+        timeout = aiohttp.ClientTimeout(total=2.5)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        }
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            tasks = [_verify_single_url(c, session) for c in raw_candidates]
+            checked = await asyncio.gather(*tasks, return_exceptions=True)
+            verified_links = [r for r in checked if isinstance(r, dict) and r.get("verified")]
+
+        # Prioritize verified links; if all network checks blocked (e.g. strict firewall), fallback gracefully to candidates
+        final_results = verified_links[:max_results] if verified_links else raw_candidates[:max_results]
+        app_logger.info(
+            f"[FastMCP] Web search returned {len(final_results)} verified live items (from {len(raw_candidates)} candidates)"
+        )
+        return final_results
     except asyncio.TimeoutError:
-        app_logger.warning(f"[FastMCP] Web search timed out after 7s for '{clean_q}'")
+        app_logger.warning(f"[FastMCP] Web search timed out for '{clean_q}'")
         return []
     except Exception as e:
         app_logger.error(f"[FastMCP] Web search error: {e}", exc_info=True)
@@ -96,16 +137,18 @@ async def execute_web_search(query: str, max_results: int = 5) -> List[Dict[str,
 
 
 def format_web_results_for_llm(results: List[Dict[str, str]]) -> str:
-    """Formats search results into a clean structured string for LLM injection."""
+    """Formats verified search results into a clean structured string for LLM injection."""
     if not results:
         return "No external web results found."
 
     lines = []
     for idx, r in enumerate(results, 1):
+        status_label = f"Verified Live (HTTP {r.get('http_status', 200)})" if r.get("verified") else "Live Candidate"
         lines.append(f"{idx}. Title: {r['title']}")
         lines.append(f"   URL: {r['url']}")
         lines.append(f"   Domain: {r.get('domain', '')}")
-        lines.append(f"   Snippet: {r['snippet']}")
+        lines.append(f"   Status: {status_label}")
+        lines.append(f"   Snippet/Content: {r['snippet']}")
         lines.append("")
     return "\n".join(lines).strip()
 

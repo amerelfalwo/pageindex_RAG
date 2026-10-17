@@ -958,13 +958,17 @@ CITATION & SOURCING RULES
 2. IF THE ANSWER IS NOT IN THE PDF DOCUMENT OR WAS FOUND VIA LIVE WEB SEARCH:
    - State clearly to the user:
      "المعلومة المطلوبة غير مذكورة داخل المستند المرفق، ولكن استناداً إلى نتائج البحث على الويب:" (or natural English if query is English).
+   - MANDATORY LINK TESTING & CONTENT VALIDATION RULES:
+     * Check and verify the link before citing it: Ensure the link is live and that the page content actually contains the answer and information requested by the user, rather than an empty page, broken link, or irrelevant headline.
+     * NEVER invent, guess, or extrapolate speculative URLs. Every single URL MUST be taken verbatim from the verified LIVE WEB SEARCH EVIDENCE.
+     * If a link in the search results does not contain the answer or appears to be broken/dead, DO NOT cite it.
    - Use the LIVE WEB SEARCH EVIDENCE to provide a clear, accurate, and comprehensive answer.
-   - Embed clickable Markdown links directly inside your explanation:
+   - Embed verified clickable Markdown links directly inside your explanation:
      [Source or Article Title](URL)
    - YOU MUST ALWAYS conclude your response with a dedicated sources block at the very end:
      ### 🌐 المصادر والروابط ذات الصلة:
-     - [Article Title 1](URL 1) - وصف مختصر أو اسم الموقع
-     - [Article Title 2](URL 2) - وصف مختصر أو اسم الموقع
+     - [Article Title 1](URL 1) - وصف دقيق ومختصر للمحتوى الفعلي الموجود داخل الصفحة
+     - [Article Title 2](URL 2) - وصف دقيق ومختصر للمحتوى الفعلي الموجود داخل الصفحة
 
 3. HYBRID / COMPARISON (Both PDF & Web used):
    - Clearly delineate what came from the PDF with (Section: "...", Page: X) and what came from the web with [Title](URL).
@@ -1232,13 +1236,17 @@ LIVE WEB SEARCH EVIDENCE (FastMCP Web Search)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {formatted_web}
 
-WEB SEARCH SOURCING RULES:
-1. Synthesize a comprehensive, up-to-date answer using the verified web search evidence above.
-2. Embed clickable Markdown links directly throughout your answer: [Source Title](URL).
+WEB SEARCH SOURCING & LINK VERIFICATION RULES:
+1. LINK TESTING & CONTENT VALIDATION:
+   - Carefully verify that each link is live and that its page content actually contains the substantive answer and information requested by the user.
+   - Do NOT output dead, 404, or broken links.
+   - Do NOT cite clickbait links where the actual body content is missing or unrelated to the query.
+   - NEVER invent, hallucinate, or construct speculative URLs. Every URL MUST match an exact URL from the verified LIVE WEB SEARCH EVIDENCE above.
+2. Embed verified clickable Markdown links directly throughout your answer: [Source Title](URL).
 3. At the end of your response, ALWAYS include a dedicated sources section:
 ### 🌐 المصادر والروابط ذات الصلة:
-- [Source Title 1](URL 1) - description or domain
-- [Source Title 2](URL 2) - description or domain
+- [Source Title 1](URL 1) - وصف دقيق ومختصر للمحتوى الفعلي الموجود داخل الرابط
+- [Source Title 2](URL 2) - وصف دقيق ومختصر للمحتوى الفعلي الموجود داخل الرابط
 """
             except Exception as e:
                 app_logger.warning(f"Failed to format web_results for conversational stream: {e}")
