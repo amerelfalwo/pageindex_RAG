@@ -239,12 +239,31 @@ async def ask_question(
                 yield msg
 
             else:
-                # Mode D: Pure conversational AI assistant with workspace collective knowledge injected
+                # Mode D: Pure conversational AI assistant with FastMCP Web Search & workspace collective knowledge
+                web_results = None
+                greeting_triggers = [
+                    "أهلا", "أهلاً", "مرحبا", "مرحباً", "سلام", "ازيك", "صباح الخير", "مساء الخير",
+                    "من أنت", "ما اسمك", "مين انت", "hello", "hi", "hey", "who are you", "what is your name"
+                ]
+                q_strip = request.query.strip().lower()
+                is_simple_greeting = len(q_strip) < 25 and any(g in q_strip for g in greeting_triggers)
+
+                if not is_simple_greeting:
+                    try:
+                        import json
+                        from mcp_server.web_search_mcp import execute_web_search
+                        yield f'<!--STAGE:{{"stage":"web_search","query":{json.dumps(request.query)}}}-->\n'
+                        web_results = await execute_web_search(request.query, max_results=5)
+                        yield f'<!--STAGE:{{"stage":"web_search_done","results":{len(web_results or [])}}}-->\n'
+                    except Exception as web_err:
+                        app_logger.warning(f"[FastMCP] Conversational web search error: {web_err}")
+
                 async for chunk in llm_service.generate_conversational_stream(
                     query=request.query,
                     chat_history=recent_turns,
                     session_summary=session_summary,
                     global_knowledge=global_knowledge,
+                    web_results=web_results,
                 ):
                     full_answer += chunk
                     yield chunk

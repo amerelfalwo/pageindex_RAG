@@ -97,7 +97,31 @@ class VectorlessRAG:
             # Signal retrieval completion stage to frontend
             yield f'<!--STAGE:{{"stage":"retrieved","duration":{t_retrieval:.2f},"nodes":{len(all_selected_nodes)},"docs":{len(docs)}}}-->\n'
 
-            # Stream final synthesis with multi-document attribution
+            # FastMCP Web Search fallback:
+            # Trigger web search if document tree has NO matching nodes OR if user explicitly asks for web/latest info
+            web_results = None
+            web_triggers = [
+                "ابحث", "النت", "الويب", "روابط", "لينكات", "أحدث", "جديد", "أخبار",
+                "web", "search", "latest", "news", "online", "links", "url", "google", "browse"
+            ]
+            q_lower = query.lower()
+            is_explicit_web_request = any(t in q_lower for t in web_triggers)
+            is_doc_empty_for_query = len(all_selected_nodes) == 0
+
+            if is_doc_empty_for_query or is_explicit_web_request:
+                try:
+                    import json
+                    from mcp_server.web_search_mcp import execute_web_search
+                    yield f'<!--STAGE:{{"stage":"web_search","query":{json.dumps(query)}}}-->\n'
+                    t_web_start = time.monotonic()
+                    web_results = await execute_web_search(query, max_results=5)
+                    t_web = time.monotonic() - t_web_start
+                    app_logger.info(f"[FastMCP] Web search completed in {t_web:.2f}s with {len(web_results or [])} results")
+                    yield f'<!--STAGE:{{"stage":"web_search_done","duration":{t_web:.2f},"results":{len(web_results or [])}}}-->\n'
+                except Exception as web_err:
+                    app_logger.warning(f"[FastMCP] Web search fallback failed: {web_err}")
+
+            # Stream final synthesis with multi-document attribution and web links
             async for chunk in self.llm.generate_answer_stream(
                 query=query,
                 nodes=all_selected_nodes,
@@ -106,6 +130,7 @@ class VectorlessRAG:
                 session_summary=session_summary,
                 global_knowledge=global_knowledge,
                 deep_analysis=deep_analysis,
+                web_results=web_results,
             ):
                 yield chunk
 

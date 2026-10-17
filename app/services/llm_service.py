@@ -698,6 +698,7 @@ If there is insufficient evidence:
         session_summary: Optional[str] = None,
         global_knowledge: Optional[str] = None,
         deep_analysis: bool = False,
+        web_results: Optional[List[Dict[str, Any]]] = None,
     ):
         """Chat & synthesis model generates streaming answer with multimodal citations."""
         target_model = model or self.chat_model
@@ -744,6 +745,15 @@ If there is insufficient evidence:
         global_knowledge_str = ""
         if global_knowledge:
             global_knowledge_str = f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nGLOBAL KNOWLEDGE MEMORY (All workspace documents)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{global_knowledge}\n\n"
+
+        web_evidence_str = ""
+        if web_results:
+            try:
+                from mcp_server.web_search_mcp import format_web_results_for_llm
+                formatted_web = format_web_results_for_llm(web_results)
+                web_evidence_str = f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nLIVE WEB SEARCH EVIDENCE (FastMCP Web Search)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{formatted_web}\n\n"
+            except Exception as e:
+                app_logger.warning(f"Failed to format web_results for LLM: {e}")
 
         system_prompt = f"""You are Atlas, a production-grade document intelligence assistant operating inside a Retrieval-Augmented Generation (RAG) system.
 Your name is Atlas. When asked about your identity, name, or purpose, introduce yourself clearly as Atlas, the Document Intelligence research assistant.
@@ -934,28 +944,30 @@ If retrieved sections contain conflicting information:
 Do not resolve contradictions using unsupported assumptions.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CITATION POLICY
+CITATION & SOURCING RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Citations must refer ONLY to information present in the supplied context.
+1. IF ANSWERING FROM THE ATTACHED PDF DOCUMENT:
+   - Base your answer directly on the retrieved document context.
+   - You MUST place citations immediately after the relevant claim or paragraph:
+     (Section: "Section Title", Page: X)
+   - Never invent a page number. If page is unavailable or "?", cite section title only:
+     (Section: "Section Title")
+   - Do not cite sections that do not exist in the document.
 
-When possible, cite using:
+2. IF THE ANSWER IS NOT IN THE PDF DOCUMENT OR WAS FOUND VIA LIVE WEB SEARCH:
+   - State clearly to the user:
+     "المعلومة المطلوبة غير مذكورة داخل المستند المرفق، ولكن استناداً إلى نتائج البحث على الويب:" (or natural English if query is English).
+   - Use the LIVE WEB SEARCH EVIDENCE to provide a clear, accurate, and comprehensive answer.
+   - Embed clickable Markdown links directly inside your explanation:
+     [Source or Article Title](URL)
+   - YOU MUST ALWAYS conclude your response with a dedicated sources block at the very end:
+     ### 🌐 المصادر والروابط ذات الصلة:
+     - [Article Title 1](URL 1) - وصف مختصر أو اسم الموقع
+     - [Article Title 2](URL 2) - وصف مختصر أو اسم الموقع
 
-(Section: "Section Title", Page: X)
-
-For claims spanning multiple sections:
-
-(Sections: "Section A", "Section B")
-
-Place citations immediately after the relevant claim or paragraph.
-
-Do not add citations to claims that are not supported by the document.
-
-Never invent a page number.
-
-If the page number is unavailable or "?":
-
-cite the section title only.
+3. HYBRID / COMPARISON (Both PDF & Web used):
+   - Clearly delineate what came from the PDF with (Section: "...", Page: X) and what came from the web with [Title](URL).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IMAGE AND MULTIMODAL CONTENT
@@ -1056,7 +1068,7 @@ CHAT HISTORY = CONTEXT
 
 Never treat an assumption from chat history as a document fact.
 
-{session_summary_str}{global_knowledge_str}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{session_summary_str}{global_knowledge_str}{web_evidence_str}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DOCUMENT CONTEXT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1185,10 +1197,11 @@ Return only the final user-facing answer."""
         model: Optional[str] = None,
         session_summary: Optional[str] = None,
         global_knowledge: Optional[str] = None,
+        web_results: Optional[List[Dict[str, Any]]] = None,
     ):
         """Conversational stream when no specific document is attached yet.
         Uses the smaller/faster retrieval model for low-latency chat, with automatic Groq failover.
-        Integrates Session Long-Term Memory and Global Knowledge Memory across all documents.
+        Integrates Session Long-Term Memory, Global Knowledge Memory, and FastMCP Live Web Search.
         """
         # Use chat_model (Qwen2.5-7B from HF_CHAT_MODEL env) — fast and capable for conversational use
         target_model = model or self.chat_model
@@ -1201,15 +1214,34 @@ Return only the final user-facing answer."""
         chat_history_text = "\n".join(history_parts) if history_parts else ""
 
         is_arabic_query = any("\u0600" <= c <= "\u06ff" for c in query)
-        lang_rule = "Respond in Arabic (فصحى طبيعية)." if is_arabic_query else "Respond in English."
+        lang_rule = "Respond in Arabic (فصحى طبيعية ومفيدة)." if is_arabic_query else "Respond in English."
 
         system_prompt = f"""You are Atlas, a professional document intelligence and research assistant.
-Your name is Atlas (أطلس). When asked about your identity or name (e.g., "من أنت؟" or "ما اسمك؟" or "who are you?"), introduce yourself clearly as Atlas, a document intelligence and research assistant designed to understand documents and discover knowledge.
+Your name is Atlas (أطلس). When asked about your identity or name (e.g., "من أنت؟" or "ما اسمك؟" or "who are you?"), introduce yourself clearly as Atlas, a document intelligence and research assistant designed to understand documents, analyze research, and search the web for knowledge.
 {lang_rule}
 Always match the user's language.
-Be concise and accurate. Never invent facts.
-If the user asks about a document and none is uploaded, tell them to upload a PDF.
+Be concise, accurate, and structured. Never invent facts.
 """
+        if web_results:
+            try:
+                from mcp_server.web_search_mcp import format_web_results_for_llm
+                formatted_web = format_web_results_for_llm(web_results)
+                system_prompt += f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LIVE WEB SEARCH EVIDENCE (FastMCP Web Search)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{formatted_web}
+
+WEB SEARCH SOURCING RULES:
+1. Synthesize a comprehensive, up-to-date answer using the verified web search evidence above.
+2. Embed clickable Markdown links directly throughout your answer: [Source Title](URL).
+3. At the end of your response, ALWAYS include a dedicated sources section:
+### 🌐 المصادر والروابط ذات الصلة:
+- [Source Title 1](URL 1) - description or domain
+- [Source Title 2](URL 2) - description or domain
+"""
+            except Exception as e:
+                app_logger.warning(f"Failed to format web_results for conversational stream: {e}")
         if session_summary:
             system_prompt += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nSESSION LONG-TERM MEMORY (Summary of earlier turns)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{session_summary}\n"
 

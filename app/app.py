@@ -40,6 +40,26 @@ app.add_middleware(
 # Register API routers
 app.include_router(api_router)
 
+# Mount FastMCP Server (SSE & HTTP protocol for external MCP clients)
+try:
+    from mcp_server.web_search_mcp import mcp as web_search_mcp, execute_web_search
+    app.mount("/mcp", web_search_mcp.http_app())
+    app_logger.info("FastMCP Web Search Server mounted successfully at /mcp")
+except Exception as mcp_err:
+    app_logger.warning(f"Could not mount FastMCP at /mcp: {mcp_err}")
+
+
+@app.post("/tools/web-search", tags=["Tools"])
+async def api_web_search(payload: dict):
+    """Direct HTTP endpoint for FastMCP live web search tool."""
+    from mcp_server.web_search_mcp import execute_web_search
+    query = payload.get("query", "").strip()
+    max_results = int(payload.get("max_results", 5))
+    if not query:
+        return {"results": [], "query": query}
+    results = await execute_web_search(query, max_results=max_results)
+    return {"results": results, "query": query, "count": len(results)}
+
 
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -53,6 +73,7 @@ async def health_check():
     return {
         "status": "ok",
         "service": "Vectorless RAG API",
+        "fastmcp": "active",
         "database": DB_STATUS,
         "docs_count": count,
     }
@@ -60,4 +81,4 @@ async def health_check():
 
 @app.on_event("startup")
 async def on_startup():
-    app_logger.info("Vectorless RAG API service started.")
+    app_logger.info("Vectorless RAG API service started with FastMCP Web Search enabled.")
