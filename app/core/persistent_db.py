@@ -651,30 +651,54 @@ def _migrate_sqlite_to_postgres_if_needed(pg_db: Any) -> None:
     app_logger.info("[Migration] SQLite to PostgreSQL migration completed successfully.")
 
 
+DB_STATUS = {
+    "provider": "SQLite",
+    "connected": True,
+    "error": None,
+    "url_configured": False,
+}
+
+
 def create_persistent_db() -> Any:
     """
     Factory function for persistent database.
     Checks environment for DATABASE_URL / POSTGRES_URL.
     If provided and accessible, uses PostgresDB. Otherwise falls back to SQLite.
     """
+    global DB_STATUS
     pg_url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or os.getenv("POSTGRESQL_URL")
     if pg_url:
+        pg_url = pg_url.strip().strip("'").strip('"')
+        DB_STATUS["url_configured"] = True
         try:
             from core.postgres_db import PostgresDB
             pg_db = PostgresDB(pg_url)
             safe_url = pg_url.split("@")[-1] if "@" in pg_url else "local"
             app_logger.info(f"[PersistentDB] Connected to PostgreSQL: {safe_url}")
+            DB_STATUS["provider"] = "PostgreSQL"
+            DB_STATUS["connected"] = True
+            DB_STATUS["error"] = None
             try:
                 _migrate_sqlite_to_postgres_if_needed(pg_db)
             except Exception as mex:
                 app_logger.warning(f"[PersistentDB] Auto-migration skipped: {mex}")
             return pg_db
         except Exception as e:
+            err_msg = str(e)
+            # Sanitize password from error if any
+            if "@" in err_msg and ":" in err_msg:
+                err_msg = err_msg.split("@")[-1]
+            DB_STATUS["provider"] = "SQLite (fallback)"
+            DB_STATUS["connected"] = False
+            DB_STATUS["error"] = err_msg
             app_logger.error(f"[PersistentDB] Failed to connect to PostgreSQL ({e}). Falling back to SQLite.")
 
     app_logger.info(f"[PersistentDB] Using SQLite persistence at {DB_PATH}")
+    DB_STATUS["provider"] = "SQLite"
+    DB_STATUS["connected"] = True
     return SQLitePersistentDB(DB_PATH)
 
 
 # Global singleton instance
 persistent_db = create_persistent_db()
+

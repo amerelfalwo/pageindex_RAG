@@ -43,8 +43,19 @@ app.include_router(api_router)
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint to verify service availability."""
-    return {"status": "ok", "service": "Vectorless RAG API"}
+    """Health check endpoint to verify service availability and database status."""
+    from core.persistent_db import DB_STATUS, persistent_db
+    try:
+        docs = persistent_db.list_docs()
+        count = len(docs)
+    except Exception:
+        count = 0
+    return {
+        "status": "ok",
+        "service": "Vectorless RAG API",
+        "database": DB_STATUS,
+        "docs_count": count,
+    }
 
 
 @app.on_event("startup")
