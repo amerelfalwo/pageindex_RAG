@@ -1,10 +1,9 @@
 """
 persistent_db.py
 ────────────────
-SQLite-backed persistence layer for long-term memory.
-Stores chat sessions, messages, and chat→document associations.
-The heavy document trees are kept on-disk in CACHE_DIR (JSON) –
-this layer only records the *metadata* needed to reload them.
+Unified persistence layer supporting both PostgreSQL and SQLite.
+If `DATABASE_URL` or `POSTGRES_URL` is set, PostgreSQL is used for durability across
+restarts/deployments. Otherwise, it gracefully falls back to local SQLite.
 """
 
 import os
@@ -15,6 +14,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
+from utils.logger import app_logger
 
 # ── paths ──────────────────────────────────────────────────────────────────
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,8 +23,8 @@ DATA_DIR = "/data" if (os.path.exists("/data") and os.access("/data", os.W_OK)) 
 DB_PATH = os.path.join(DATA_DIR, "memory.db")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# ── schema ─────────────────────────────────────────────────────────────────
-_DDL = """
+# ── SQLite schema ───────────────────────────────────────────────────────────
+_SQLITE_DDL = """
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 
@@ -64,6 +64,21 @@ CREATE TABLE IF NOT EXISTS doc_meta (
     updated_at      REAL NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_doc_meta_hash ON doc_meta(content_hash);
+
+CREATE TABLE IF NOT EXISTS doc_indices (
+    doc_id          TEXT PRIMARY KEY REFERENCES doc_meta(doc_id) ON DELETE CASCADE,
+    content_hash    TEXT,
+    tree            TEXT,
+    node_map        TEXT,
+    flat_sections   TEXT,
+    file_base64     TEXT,
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_doc_indices_hash ON doc_indices(content_hash);
+
 CREATE TABLE IF NOT EXISTS chat_documents (
     chat_id     TEXT NOT NULL REFERENCES chats(chat_id) ON DELETE CASCADE,
     doc_id      TEXT NOT NULL REFERENCES doc_meta(doc_id) ON DELETE CASCADE,
@@ -100,7 +115,7 @@ CREATE TABLE IF NOT EXISTS global_knowledge_summary (
 """
 
 
-class PersistentDB:
+class SQLitePersistentDB:
     """Thread-safe SQLite wrapper for long-term chat & document memory."""
 
     def __init__(self, db_path: str = DB_PATH) -> None:
@@ -128,7 +143,7 @@ class PersistentDB:
 
     def _init_schema(self) -> None:
         with self._tx() as conn:
-            conn.executescript(_DDL)
+            conn.executescript(_SQLITE_DDL)
             # Ensure newly added columns exist in older DB instances
             cursor = conn.execute("PRAGMA table_info(doc_meta)")
             existing_cols = {row["name"] for row in cursor.fetchall()}
@@ -218,7 +233,7 @@ class PersistentDB:
         q = "SELECT role, content FROM messages WHERE chat_id=? ORDER BY created_at ASC"
         if limit > 0:
             rows = self._conn().execute(
-                f"SELECT role, content FROM messages WHERE chat_id=? ORDER BY created_at DESC LIMIT ?",
+                "SELECT role, content FROM messages WHERE chat_id=? ORDER BY created_at DESC LIMIT ?",
                 (chat_id, limit),
             ).fetchall()
             return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
@@ -289,7 +304,6 @@ class PersistentDB:
         return [dict(r) for r in rows]
 
     def find_doc_by_hash(self, content_hash: str) -> Optional[Dict[str, Any]]:
-        # Match latest document with this hash
         row = self._conn().execute(
             "SELECT * FROM doc_meta WHERE content_hash=? ORDER BY updated_at DESC LIMIT 1",
             (content_hash,),
@@ -302,7 +316,81 @@ class PersistentDB:
             conn.execute("UPDATE chats SET doc_id=NULL, doc_name=NULL WHERE doc_id=?", (doc_id,))
             conn.execute("DELETE FROM chat_documents WHERE doc_id=?", (doc_id,))
             conn.execute("DELETE FROM knowledge_memory WHERE doc_id=?", (doc_id,))
+            conn.execute("DELETE FROM doc_indices WHERE doc_id=?", (doc_id,))
             return cur.rowcount > 0
+
+    # ── document heavy indices store ─────────────────────────────────────────
+    def save_doc_index(
+        self,
+        doc_id: str,
+        content_hash: Optional[str],
+        tree: Any,
+        node_map: Optional[Dict[str, Any]] = None,
+        flat_sections: Optional[List[Dict[str, Any]]] = None,
+        file_base64: Optional[str] = None,
+    ) -> None:
+        now = time.time()
+        with self._tx() as conn:
+            conn.execute(
+                """
+                INSERT INTO doc_indices(
+                    doc_id, content_hash, tree, node_map, flat_sections, file_base64, created_at, updated_at
+                )
+                VALUES(?,?,?,?,?,?,?,?)
+                ON CONFLICT(doc_id) DO UPDATE SET
+                    content_hash=COALESCE(excluded.content_hash, doc_indices.content_hash),
+                    tree=excluded.tree,
+                    node_map=excluded.node_map,
+                    flat_sections=excluded.flat_sections,
+                    file_base64=COALESCE(excluded.file_base64, doc_indices.file_base64),
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    doc_id,
+                    content_hash,
+                    json.dumps(tree) if tree is not None else None,
+                    json.dumps(node_map) if node_map is not None else None,
+                    json.dumps(flat_sections) if flat_sections is not None else None,
+                    file_base64,
+                    now,
+                    now,
+                ),
+            )
+
+    def get_doc_index(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        row = self._conn().execute(
+            "SELECT * FROM doc_indices WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        for k in ("tree", "node_map", "flat_sections"):
+            if res.get(k) and isinstance(res[k], str):
+                try:
+                    res[k] = json.loads(res[k])
+                except Exception:
+                    pass
+        return res
+
+    def get_doc_index_by_hash(self, content_hash: str) -> Optional[Dict[str, Any]]:
+        row = self._conn().execute(
+            "SELECT * FROM doc_indices WHERE content_hash=? ORDER BY updated_at DESC LIMIT 1",
+            (content_hash,),
+        ).fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        for k in ("tree", "node_map", "flat_sections"):
+            if res.get(k) and isinstance(res[k], str):
+                try:
+                    res[k] = json.loads(res[k])
+                except Exception:
+                    pass
+        return res
+
+    def delete_doc_index(self, doc_id: str) -> None:
+        with self._tx() as conn:
+            conn.execute("DELETE FROM doc_indices WHERE doc_id=?", (doc_id,))
 
     # ── multi-doc session associations ──────────────────────────────────────
     def add_chat_document(self, chat_id: str, doc_id: str, doc_name: Optional[str] = None) -> None:
@@ -318,7 +406,6 @@ class PersistentDB:
                 """,
                 (chat_id, doc_id, doc_name, now),
             )
-            # Maintain backward compatibility on chats table with latest doc
             conn.execute(
                 "UPDATE chats SET doc_id=?, doc_name=?, updated_at=? WHERE chat_id=?",
                 (doc_id, doc_name, now, chat_id),
@@ -496,6 +583,98 @@ class PersistentDB:
         return res
 
 
+def _migrate_sqlite_to_postgres_if_needed(pg_db: Any) -> None:
+    """If local SQLite contains chats/docs and PostgreSQL is newly initialized, migrate data smoothly."""
+    if not os.path.exists(DB_PATH):
+        return
 
-# Global singleton
-persistent_db = PersistentDB()
+    # Check if Postgres already has documents or chats
+    if pg_db.list_docs() or pg_db.list_chats():
+        return
+
+    sqlite_db = SQLitePersistentDB(DB_PATH)
+    sqlite_chats = sqlite_db.list_chats()
+    sqlite_docs = sqlite_db.list_docs()
+
+    if not sqlite_chats and not sqlite_docs:
+        return
+
+    app_logger.info(f"[Migration] Migrating {len(sqlite_docs)} docs and {len(sqlite_chats)} chats from SQLite to PostgreSQL...")
+
+    for d in sqlite_docs:
+        try:
+            pg_db.upsert_doc_meta(
+                doc_id=d["doc_id"],
+                filename=d.get("filename", "document.pdf"),
+                status=d.get("status", "ready"),
+                page_count=d.get("page_count", 0),
+                section_count=d.get("section_count", 0),
+                progress=d.get("progress", 100),
+                current_stage=d.get("current_stage", "Ready"),
+                indexing_method=d.get("indexing_method"),
+                duration=d.get("duration"),
+                error=d.get("error"),
+                content_hash=d.get("content_hash"),
+                file_path=d.get("file_path"),
+            )
+            # Check if index exists in SQLite
+            s_idx = sqlite_db.get_doc_index(d["doc_id"])
+            if s_idx:
+                pg_db.save_doc_index(
+                    doc_id=d["doc_id"],
+                    content_hash=d.get("content_hash"),
+                    tree=s_idx.get("tree"),
+                    node_map=s_idx.get("node_map"),
+                    flat_sections=s_idx.get("flat_sections"),
+                    file_base64=s_idx.get("file_base64"),
+                )
+        except Exception as dex:
+            app_logger.warning(f"[Migration] Error migrating doc {d.get('doc_id')}: {dex}")
+
+    for c in sqlite_chats:
+        try:
+            cid = c["chat_id"]
+            pg_db.create_chat(chat_id=cid, title=c.get("title"))
+            if c.get("doc_id"):
+                pg_db.set_chat_doc(cid, c["doc_id"], c.get("doc_name"))
+            # Migrate messages
+            msgs = sqlite_db.get_messages(cid)
+            for m in msgs:
+                pg_db.add_message(cid, m["role"], m["content"])
+            # Migrate attached documents
+            att = sqlite_db.get_chat_documents(cid)
+            for a in att:
+                pg_db.add_chat_document(cid, a["doc_id"], a.get("doc_name"))
+        except Exception as cex:
+            app_logger.warning(f"[Migration] Error migrating chat {c.get('chat_id')}: {cex}")
+
+    app_logger.info("[Migration] SQLite to PostgreSQL migration completed successfully.")
+
+
+def create_persistent_db() -> Any:
+    """
+    Factory function for persistent database.
+    Checks environment for DATABASE_URL / POSTGRES_URL.
+    If provided and accessible, uses PostgresDB. Otherwise falls back to SQLite.
+    """
+    pg_url = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or os.getenv("POSTGRESQL_URL")
+    if pg_url:
+        try:
+            from core.postgres_db import PostgresDB
+            pg_db = PostgresDB(pg_url)
+            safe_url = pg_url.split("@")[-1] if "@" in pg_url else "local"
+            app_logger.info(f"[PersistentDB] Connected to PostgreSQL: {safe_url}")
+            try:
+                _migrate_sqlite_to_postgres_if_needed(pg_db)
+            except Exception as mex:
+                app_logger.warning(f"[PersistentDB] Auto-migration skipped: {mex}")
+            return pg_db
+        except Exception as e:
+            app_logger.error(f"[PersistentDB] Failed to connect to PostgreSQL ({e}). Falling back to SQLite.")
+
+    app_logger.info(f"[PersistentDB] Using SQLite persistence at {DB_PATH}")
+    return SQLitePersistentDB(DB_PATH)
+
+
+# Global singleton instance
+persistent_db = create_persistent_db()

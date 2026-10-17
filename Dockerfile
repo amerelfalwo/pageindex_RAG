@@ -7,9 +7,9 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-COPY pyproject.toml uv.lock ./
+COPY requirements.txt pyproject.toml uv.lock ./
 
-RUN uv pip install --system -r pyproject.toml fastapi uvicorn python-multipart
+RUN uv pip install --system -r requirements.txt
 
 COPY app/ ./app/
 

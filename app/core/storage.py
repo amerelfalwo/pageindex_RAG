@@ -2,6 +2,7 @@ import os
 import json
 import time
 import uuid
+import base64
 from typing import Dict, List, Optional, Any
 
 from core.persistent_db import persistent_db
@@ -79,43 +80,70 @@ class MemoryStorage:
                 return doc_obj
 
             # 3. Try to load tree from disk JSON cache for ready documents
+            cached = None
             cache_path = os.path.join(CACHE_DIR, f"{content_hash}.json")
             if os.path.exists(cache_path):
                 try:
                     with open(cache_path, "r", encoding="utf-8") as f:
                         cached = json.load(f)
-                    self._documents[doc_id] = {
-                        "doc_id": doc_id,
-                        "document_id": doc_id,
-                        "filename": cached.get("filename", db_meta.get("filename", "document.pdf")),
-                        "status": "ready",
-                        "progress": 100,
-                        "current_stage": "Ready",
-                        "tree": cached.get("tree"),
-                        "page_count": cached.get("page_count", db_meta.get("page_count", 1)),
-                        "section_count": cached.get("section_count", db_meta.get("section_count", len(cached.get("flat_sections", [])))),
-                        "indexing_method": db_meta.get("indexing_method", "pageindex"),
-                        "duration": db_meta.get("duration"),
-                        "error": None,
-                        "content_hash": content_hash,
-                        "created_at": cached.get("created_at", time.time()),
-                        "updated_at": time.time(),
-                    }
-                    self._trees[doc_id] = cached.get("tree")
-                    if cached.get("node_map"):
-                        self._node_maps[doc_id] = cached["node_map"]
-                    if cached.get("flat_sections"):
-                        self._flat_sections[doc_id] = cached["flat_sections"]
-                    self._hash_to_doc_id[content_hash] = doc_id
-                    return self._documents[doc_id]
                 except Exception:
-                    pass
+                    cached = None
+
+            # 4. If disk cache is missing (e.g. fresh container start), load from DB
+            if not cached or not cached.get("tree"):
+                db_idx = persistent_db.get_doc_index_by_hash(content_hash) or persistent_db.get_doc_index(doc_id)
+                if db_idx and db_idx.get("tree"):
+                    cached = {
+                        "filename": db_meta.get("filename", "document.pdf"),
+                        "tree": db_idx.get("tree"),
+                        "node_map": db_idx.get("node_map"),
+                        "flat_sections": db_idx.get("flat_sections"),
+                        "page_count": db_meta.get("page_count", 1),
+                        "section_count": db_meta.get("section_count", len(db_idx.get("flat_sections", [])) if db_idx.get("flat_sections") else 0),
+                        "created_at": db_idx.get("created_at", time.time()),
+                    }
+
+            if cached and cached.get("tree"):
+                self._documents[doc_id] = {
+                    "doc_id": doc_id,
+                    "document_id": doc_id,
+                    "filename": cached.get("filename", db_meta.get("filename", "document.pdf")),
+                    "status": "ready",
+                    "progress": 100,
+                    "current_stage": "Ready",
+                    "tree": cached.get("tree"),
+                    "page_count": cached.get("page_count", db_meta.get("page_count", 1)),
+                    "section_count": cached.get("section_count", db_meta.get("section_count", len(cached.get("flat_sections", [])))),
+                    "indexing_method": db_meta.get("indexing_method", "pageindex"),
+                    "duration": db_meta.get("duration"),
+                    "error": None,
+                    "content_hash": content_hash,
+                    "created_at": cached.get("created_at", time.time()),
+                    "updated_at": time.time(),
+                }
+                self._trees[doc_id] = cached.get("tree")
+                if cached.get("node_map"):
+                    self._node_maps[doc_id] = cached["node_map"]
+                if cached.get("flat_sections"):
+                    self._flat_sections[doc_id] = cached["flat_sections"]
+                self._hash_to_doc_id[content_hash] = doc_id
+                return self._documents[doc_id]
         return None
 
     def set_hash_mapping(self, content_hash: str, doc_id: str) -> None:
         self._hash_to_doc_id[content_hash] = doc_id
         doc = self._documents.get(doc_id)
         if doc and doc.get("status") == "ready" and doc.get("tree"):
+            try:
+                persistent_db.save_doc_index(
+                    doc_id=doc_id,
+                    content_hash=content_hash,
+                    tree=doc.get("tree"),
+                    node_map=self._node_maps.get(doc_id),
+                    flat_sections=self._flat_sections.get(doc_id),
+                )
+            except Exception:
+                pass
             cache_path = os.path.join(CACHE_DIR, f"{content_hash}.json")
             try:
                 payload = {
@@ -302,6 +330,26 @@ class MemoryStorage:
         except Exception:
             pass
 
+        # Backup original PDF bytes (base64) so it survives ephemeral restarts
+        file_b64 = None
+        target_path = file_path or doc.get("file_path")
+        if target_path and os.path.exists(target_path):
+            try:
+                with open(target_path, "rb") as bf:
+                    file_b64 = base64.b64encode(bf.read()).decode("utf-8")
+            except Exception:
+                pass
+
+        # Persist full tree & index to DB (PostgreSQL / SQLite)
+        persistent_db.save_doc_index(
+            doc_id=doc_id,
+            content_hash=doc.get("content_hash"),
+            tree=tree,
+            node_map=self._node_maps.get(doc_id),
+            flat_sections=self._flat_sections.get(doc_id),
+            file_base64=file_b64,
+        )
+
         persistent_db.upsert_doc_meta(
             doc_id=doc_id,
             filename=doc["filename"],
@@ -353,10 +401,10 @@ class MemoryStorage:
         if not doc_id:
             return None
         doc = self._documents.get(doc_id)
-        if doc:
+        if doc and doc.get("status") == "ready" and doc.get("tree"):
             return doc
 
-        # Check SQLite
+        # Check Persistent DB
         db_meta = persistent_db.get_doc_meta(doc_id)
         if db_meta:
             doc_obj = {
@@ -377,6 +425,7 @@ class MemoryStorage:
                 "updated_at": db_meta.get("updated_at", time.time()),
             }
             if doc_obj["status"] == "ready":
+                # 1. Try disk cache
                 candidates = [f"{doc_id}.json"]
                 if doc_obj.get("content_hash"):
                     candidates.append(f"{doc_obj['content_hash']}.json")
@@ -393,6 +442,45 @@ class MemoryStorage:
                             if cached.get("flat_sections"):
                                 self._flat_sections[doc_id] = cached["flat_sections"]
                             break
+                        except Exception:
+                            pass
+
+                # 2. If tree was not found on disk, load directly from Persistent DB!
+                if doc_obj.get("tree") is None:
+                    idx = persistent_db.get_doc_index(doc_id)
+                    if not idx and doc_obj.get("content_hash"):
+                        idx = persistent_db.get_doc_index_by_hash(doc_obj["content_hash"])
+                    if idx and idx.get("tree"):
+                        doc_obj["tree"] = idx["tree"]
+                        self._trees[doc_id] = idx["tree"]
+                        if idx.get("node_map"):
+                            self._node_maps[doc_id] = idx["node_map"]
+                        if idx.get("flat_sections"):
+                            self._flat_sections[doc_id] = idx["flat_sections"]
+
+                        # Recreate file on disk if missing
+                        if idx.get("file_base64") and doc_obj.get("file_path") and not os.path.exists(doc_obj["file_path"]):
+                            try:
+                                os.makedirs(os.path.dirname(doc_obj["file_path"]), exist_ok=True)
+                                with open(doc_obj["file_path"], "wb") as bf:
+                                    bf.write(base64.b64decode(idx["file_base64"]))
+                            except Exception:
+                                pass
+
+                        # Cache to disk for local speedup
+                        try:
+                            cache_path = os.path.join(CACHE_DIR, f"{doc_id}.json")
+                            with open(cache_path, "w", encoding="utf-8") as f:
+                                json.dump({
+                                    "doc_id": doc_id,
+                                    "filename": doc_obj.get("filename"),
+                                    "tree": doc_obj["tree"],
+                                    "page_count": doc_obj.get("page_count", 1),
+                                    "section_count": doc_obj.get("section_count", 0),
+                                    "node_map": self._node_maps.get(doc_id),
+                                    "flat_sections": self._flat_sections.get(doc_id),
+                                    "created_at": doc_obj.get("created_at", time.time()),
+                                }, f)
                         except Exception:
                             pass
 
@@ -444,6 +532,7 @@ class MemoryStorage:
         self._node_maps.pop(doc_id, None)
         self._flat_sections.pop(doc_id, None)
         self._active_tasks.pop(doc_id, None)
+        persistent_db.delete_doc_index(doc_id)
         return persistent_db.delete_doc(doc_id)
 
 
