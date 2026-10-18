@@ -14,5 +14,4 @@ wheels/
 app/data/
 data/
 static/
-evaluation/
 *.log
