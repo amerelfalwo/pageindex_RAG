@@ -239,8 +239,9 @@ async def ask_question(
                 yield msg
 
             else:
-                # Mode D: Pure conversational AI assistant with FastMCP Web Search & workspace collective knowledge
+                # Mode D: Pure conversational AI assistant with FastMCP Web Search, arXiv academic research, & workspace collective knowledge
                 web_results = None
+                arxiv_results = None
                 greeting_triggers = [
                     "أهلا", "أهلاً", "مرحبا", "مرحباً", "سلام", "ازيك", "صباح الخير", "مساء الخير",
                     "من أنت", "ما اسمك", "مين انت", "hello", "hi", "hey", "who are you", "what is your name"
@@ -249,8 +250,22 @@ async def ask_question(
                 is_simple_greeting = len(q_strip) < 25 and any(g in q_strip for g in greeting_triggers)
 
                 if not is_simple_greeting:
+                    import json
+                    # Check for academic intent / arXiv triggers
+                    academic_triggers = [
+                        "arxiv", "paper", "papers", "research paper", "literature review",
+                        "citations", "academic", "preprint", "journal", "أوراق بحثية", "ورقة بحثية", "أبحاث"
+                    ]
+                    if any(at in q_strip for at in academic_triggers):
+                        try:
+                            from mcp_server.research_tools import search_arxiv_papers_async
+                            yield f'<!--STAGE:{{"stage":"arxiv_search","query":{json.dumps(request.query)}}}-->\n'
+                            arxiv_results = await search_arxiv_papers_async(request.query, max_results=4)
+                            yield f'<!--STAGE:{{"stage":"arxiv_search_done","results":{len(arxiv_results or [])}}}-->\n'
+                        except Exception as arxiv_err:
+                            app_logger.warning(f"[arXiv] Conversational arXiv search error: {arxiv_err}")
+
                     try:
-                        import json
                         from mcp_server.web_search_mcp import execute_web_search
                         yield f'<!--STAGE:{{"stage":"web_search","query":{json.dumps(request.query)}}}-->\n'
                         web_results = await execute_web_search(request.query, max_results=5)
@@ -264,9 +279,11 @@ async def ask_question(
                     session_summary=session_summary,
                     global_knowledge=global_knowledge,
                     web_results=web_results,
+                    arxiv_results=arxiv_results,
                 ):
                     full_answer += chunk
                     yield chunk
+
 
         finally:
             if full_answer:

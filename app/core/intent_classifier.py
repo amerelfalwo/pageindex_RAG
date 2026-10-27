@@ -6,6 +6,7 @@ class QueryIntent:
     GLOBAL_SUMMARY = "global_summary"
     TAXONOMY_ARCHITECTURE = "taxonomy_architecture"
     CROSS_DOC_SUMMARY = "cross_doc_summary"
+    ACADEMIC_RESEARCH = "academic_research"
     SPECIFIC_FACT = "specific_fact"
 
 
@@ -14,6 +15,17 @@ class QueryIntentClassifier:
     Ultra-fast deterministic query intent classifier for Atlas Vectorless RAG.
     Zero external dependencies. Operates in < 0.1ms using compiled regular expressions.
     """
+
+    # Academic & Literature Research Triggers
+    _EN_ACADEMIC_PATTERNS = [
+        r"\b(arxiv|research papers?|scientific papers?|literature reviews?|citations?)\b",
+        r"\b(academic papers?|journal articles?|recent research|preprints?|proceedings)\b",
+        r"\b(sota|state of the art|peer-reviewed|whitepapers?)\b",
+    ]
+
+    _AR_ACADEMIC_PATTERNS = [
+        r"(أوراق بحثية|ورقة بحثية|أبحاث|أحدث الأبحاث|دراسة أكاديمية|دراسات|أرشيف|مراجع علمية|مراجعة أدبيات|استشهاد|اقتباسات|مجلات علمية)",
+    ]
 
     # English Triggers
     _EN_GLOBAL_PATTERNS = [
@@ -60,10 +72,12 @@ class QueryIntentClassifier:
     ]
 
     def __init__(self):
+        self.en_academic_re = [re.compile(p, re.IGNORECASE) for p in self._EN_ACADEMIC_PATTERNS]
         self.en_global_re = [re.compile(p, re.IGNORECASE) for p in self._EN_GLOBAL_PATTERNS]
         self.en_tax_re = [re.compile(p, re.IGNORECASE) for p in self._EN_TAXONOMY_ARCH_PATTERNS]
         self.en_cross_re = [re.compile(p, re.IGNORECASE) for p in self._EN_CROSS_DOC_PATTERNS]
 
+        self.ar_academic_re = [re.compile(p) for p in self._AR_ACADEMIC_PATTERNS]
         self.ar_global_re = [re.compile(p) for p in self._AR_GLOBAL_PATTERNS]
         self.ar_tax_re = [re.compile(p) for p in self._AR_TAXONOMY_ARCH_PATTERNS]
         self.ar_cross_re = [re.compile(p) for p in self._AR_CROSS_DOC_PATTERNS]
@@ -75,6 +89,7 @@ class QueryIntentClassifier:
             {
                 "intent": QueryIntent.*,
                 "is_global_or_summary": bool,
+                "is_academic": bool,
                 "matched_triggers": List[str],
                 "confidence": float
             }
@@ -83,6 +98,7 @@ class QueryIntentClassifier:
             return {
                 "intent": QueryIntent.SPECIFIC_FACT,
                 "is_global_or_summary": False,
+                "is_academic": False,
                 "matched_triggers": [],
                 "confidence": 0.0,
             }
@@ -100,11 +116,33 @@ class QueryIntentClassifier:
             return {
                 "intent": QueryIntent.GLOBAL_SUMMARY,
                 "is_global_or_summary": True,
+                "is_academic": False,
                 "matched_triggers": matched_triggers,
                 "confidence": 0.95,
             }
 
-        # 2. Cross-document / Comparison intent
+        # 2. Academic & Literature Research intent (arXiv papers, literature reviews)
+        acad_triggers: List[str] = []
+        for r in self.en_academic_re:
+            m = r.search(q_lower)
+            if m:
+                acad_triggers.append(f"en_academic:{m.group(0)}")
+        for r in self.ar_academic_re:
+            m = r.search(q_clean)
+            if m:
+                acad_triggers.append(f"ar_academic:{m.group(0)}")
+
+        if acad_triggers:
+            matched_triggers.extend(acad_triggers)
+            return {
+                "intent": QueryIntent.ACADEMIC_RESEARCH,
+                "is_global_or_summary": False,
+                "is_academic": True,
+                "matched_triggers": matched_triggers,
+                "confidence": 0.92,
+            }
+
+        # 3. Cross-document / Comparison intent
         for r in self.en_cross_re:
             m = r.search(q_lower)
             if m:
@@ -118,11 +156,12 @@ class QueryIntentClassifier:
             return {
                 "intent": QueryIntent.CROSS_DOC_SUMMARY,
                 "is_global_or_summary": True,
+                "is_academic": False,
                 "matched_triggers": matched_triggers,
                 "confidence": 0.90,
             }
 
-        # 3. Taxonomy / Architecture intent
+        # 4. Taxonomy / Architecture intent
         tax_triggers: List[str] = []
         for r in self.en_tax_re:
             m = r.search(q_lower)
@@ -138,11 +177,12 @@ class QueryIntentClassifier:
             return {
                 "intent": QueryIntent.TAXONOMY_ARCHITECTURE,
                 "is_global_or_summary": True,
+                "is_academic": False,
                 "matched_triggers": matched_triggers,
                 "confidence": 0.88,
             }
 
-        # 4. Global / Overview / Summary intent
+        # 5. Global / Overview / Summary intent
         glob_triggers: List[str] = []
         for r in self.en_global_re:
             m = r.search(q_lower)
@@ -158,17 +198,20 @@ class QueryIntentClassifier:
             return {
                 "intent": QueryIntent.GLOBAL_SUMMARY,
                 "is_global_or_summary": True,
+                "is_academic": False,
                 "matched_triggers": matched_triggers,
                 "confidence": 0.92,
             }
 
-        # 5. Default to Specific Fact lookup
+        # 6. Default to Specific Fact lookup
         return {
             "intent": QueryIntent.SPECIFIC_FACT,
             "is_global_or_summary": False,
+            "is_academic": False,
             "matched_triggers": [],
             "confidence": 0.50,
         }
+
 
 
 # Global singleton instance for high-throughput zero-alloc usage

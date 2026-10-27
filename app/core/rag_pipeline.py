@@ -537,6 +537,30 @@ class VectorlessRAG:
                 except Exception as web_err:
                     app_logger.warning(f"[FastMCP] Web search fallback failed: {web_err}")
 
+            # FastMCP Academic / arXiv Research tool:
+            # Trigger arXiv search when user asks for research papers, citations, or literature reviews
+            arxiv_results = None
+            is_academic_query = intent_res.get("is_academic", False)
+            academic_triggers = [
+                "arxiv", "paper", "papers", "research paper", "literature review",
+                "citations", "academic", "preprint", "journal", "أوراق بحثية", "ورقة بحثية", "أبحاث"
+            ]
+            if not is_academic_query:
+                is_academic_query = any(at in q_lower for at in academic_triggers)
+
+            if is_academic_query:
+                try:
+                    import json
+                    from mcp_server.research_tools import search_arxiv_papers_async
+                    yield f'<!--STAGE:{{"stage":"arxiv_search","query":{json.dumps(query)}}}-->\n'
+                    t_arxiv_start = time.monotonic()
+                    arxiv_results = await search_arxiv_papers_async(query, max_results=4)
+                    t_arxiv = time.monotonic() - t_arxiv_start
+                    app_logger.info(f"[arXiv] Academic search completed in {t_arxiv:.2f}s with {len(arxiv_results or [])} papers")
+                    yield f'<!--STAGE:{{"stage":"arxiv_search_done","duration":{t_arxiv:.2f},"results":{len(arxiv_results or [])}}}-->\n'
+                except Exception as arxiv_err:
+                    app_logger.warning(f"[arXiv] Academic search failed: {arxiv_err}")
+
             # Apply Sub-Node Paragraph Pruning before synthesis
             pruned_nodes = self.prune_sub_nodes(
                 query=query,
@@ -544,17 +568,23 @@ class VectorlessRAG:
                 deep_analysis=deep_analysis,
             )
 
-            # Stream final synthesis with multi-document attribution and web links
-            async for chunk in self.llm.generate_answer_stream(
-                query=query,
-                nodes=pruned_nodes,
-                chat_history=chat_history,
-                doc_name=doc_names_str,
-                session_summary=session_summary,
-                global_knowledge=global_knowledge,
-                deep_analysis=deep_analysis,
-                web_results=web_results,
-            ):
+            # Stream final synthesis with multi-document attribution, web links, and arXiv citations
+            import inspect
+            llm_sig = inspect.signature(self.llm.generate_answer_stream)
+            call_kwargs = {
+                "query": query,
+                "nodes": pruned_nodes,
+                "chat_history": chat_history,
+                "doc_name": doc_names_str,
+                "session_summary": session_summary,
+                "global_knowledge": global_knowledge,
+                "deep_analysis": deep_analysis,
+                "web_results": web_results,
+            }
+            if "arxiv_results" in llm_sig.parameters:
+                call_kwargs["arxiv_results"] = arxiv_results
+
+            async for chunk in self.llm.generate_answer_stream(**call_kwargs):
                 yield chunk
 
         except Exception as e:

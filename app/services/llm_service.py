@@ -699,6 +699,7 @@ If there is insufficient evidence:
         global_knowledge: Optional[str] = None,
         deep_analysis: bool = False,
         web_results: Optional[List[Dict[str, Any]]] = None,
+        arxiv_results: Optional[List[Dict[str, Any]]] = None,
     ):
         """Chat & synthesis model generates streaming answer with multimodal citations."""
         target_model = model or self.chat_model
@@ -765,6 +766,15 @@ If there is insufficient evidence:
                 web_evidence_str = f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nLIVE WEB SEARCH EVIDENCE (FastMCP Web Search)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{formatted_web}\n\n"
             except Exception as e:
                 app_logger.warning(f"Failed to format web_results for LLM: {e}")
+
+        arxiv_evidence_str = ""
+        if arxiv_results:
+            try:
+                from mcp_server.research_tools import format_arxiv_results_for_llm
+                formatted_arxiv = format_arxiv_results_for_llm(arxiv_results, query=query)
+                arxiv_evidence_str = f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nACADEMIC RESEARCH & ARXIV EVIDENCE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{formatted_arxiv}\n\n"
+            except Exception as e:
+                app_logger.warning(f"Failed to format arxiv_results for LLM: {e}")
 
         system_prompt = f"""You are Atlas, a production-grade document intelligence assistant operating inside a Retrieval-Augmented Generation (RAG) system.
 Your name is Atlas. When asked about your identity, name, or purpose, introduce yourself clearly as Atlas, the Document Intelligence research assistant.
@@ -1091,7 +1101,7 @@ CHAT HISTORY = CONTEXT
 
 Never treat an assumption from chat history as a document fact.
 
-{session_summary_str}{global_knowledge_str}{web_evidence_str}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{session_summary_str}{global_knowledge_str}{web_evidence_str}{arxiv_evidence_str}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DOCUMENT CONTEXT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1221,10 +1231,11 @@ Return only the final user-facing answer."""
         session_summary: Optional[str] = None,
         global_knowledge: Optional[str] = None,
         web_results: Optional[List[Dict[str, Any]]] = None,
+        arxiv_results: Optional[List[Dict[str, Any]]] = None,
     ):
         """Conversational stream when no specific document is attached yet.
         Uses the smaller/faster retrieval model for low-latency chat, with automatic Groq failover.
-        Integrates Session Long-Term Memory, Global Knowledge Memory, and FastMCP Live Web Search.
+        Integrates Session Long-Term Memory, Global Knowledge Memory, FastMCP Live Web Search, and arXiv Academic Research.
         """
         # Use chat_model (Qwen2.5-7B from HF_CHAT_MODEL env) — fast and capable for conversational use
         target_model = model or self.chat_model
@@ -1269,6 +1280,23 @@ WEB SEARCH SOURCING & LINK VERIFICATION RULES:
 """
             except Exception as e:
                 app_logger.warning(f"Failed to format web_results for conversational stream: {e}")
+
+        if arxiv_results:
+            try:
+                from mcp_server.research_tools import format_arxiv_results_for_llm
+                formatted_arxiv = format_arxiv_results_for_llm(arxiv_results, query=query)
+                system_prompt += f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACADEMIC RESEARCH & ARXIV EVIDENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{formatted_arxiv}
+
+ACADEMIC CITATION RULES:
+1. When citing arXiv papers, reference the author names, publication year, paper title, and direct PDF download link.
+2. Synthesize findings objectively, noting methodology and key insights.
+"""
+            except Exception as e:
+                app_logger.warning(f"Failed to format arxiv_results for conversational stream: {e}")
         if session_summary:
             system_prompt += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nSESSION LONG-TERM MEMORY (Summary of earlier turns)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{session_summary}\n"
 

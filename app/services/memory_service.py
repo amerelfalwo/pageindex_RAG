@@ -166,7 +166,13 @@ Return ONLY valid JSON matching this schema:
             }
         except Exception as e:
             app_logger.error(f"[MEMORY] Failed to generate document dossier for {doc_id}: {e}", exc_info=True)
-            return None
+    def get_document_dossier(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve structured knowledge dossier for an individual document."""
+        return storage.get_knowledge_dossier(doc_id)
+
+    def list_knowledge_dossiers(self) -> List[Dict[str, Any]]:
+        """Retrieve all knowledge dossiers across indexed documents."""
+        return storage.list_knowledge_dossiers()
 
     # ── 3. Global Knowledge Summary Across All Data ────────────────────────
     async def synthesize_global_knowledge(self) -> Dict[str, Any]:
