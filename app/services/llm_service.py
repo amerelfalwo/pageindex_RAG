@@ -1474,8 +1474,9 @@ ACADEMIC CITATION RULES:
                     t = it.get("title") or "Section"
                     p = it.get("page_index") or it.get("page") or 1
                     s = it.get("summary") or (it.get("text") or "")[:200].replace("\n", " ").strip()
-                    outline_lines.append(f"- Section: '{t}' (Page: {p}) | Summary: {s}")
-                    sections_sample.append({"title": t, "page": p, "summary": s})
+                    txt = (it.get("text") or it.get("content") or "")[:400].replace("\n", " ").strip()
+                    outline_lines.append(f"- Section: '{t}' (Page: {p}) | Content: {txt or s}")
+                    sections_sample.append({"title": t, "page": p, "summary": s, "text": txt or s})
                     if it.get("nodes"):
                         collect_sections(it["nodes"])
         collect_sections(tree[:15] if isinstance(tree, list) else [])
@@ -1507,6 +1508,7 @@ Return ONLY a valid JSON object matching this schema:
       "options": ["A) Choice 1", "B) Choice 2", "C) Choice 3", "D) Choice 4"],
       "answer": "A) Choice 1",
       "explanation": "Clear explanation of why this choice is correct based on the document.",
+      "evidence_text": "Exact 1-2 sentence verbatim excerpt from the document content supporting this answer.",
       "citation": "(Section: \\"Section Title\\", Page: X)"
     }}
   ],
@@ -1516,6 +1518,7 @@ Return ONLY a valid JSON object matching this schema:
       "question": "Front of card: Key concept, term, or question?",
       "answer": "Back of card: Accurate, concise definition or answer.",
       "explanation": "Supporting explanation or insight.",
+      "evidence_text": "Direct excerpt or definition from the document text.",
       "citation": "(Section: \\"Section Title\\", Page: X)"
     }}
   ]
@@ -1524,7 +1527,7 @@ Return ONLY a valid JSON object matching this schema:
 CRITICAL RULES:
 1. Every MCQ MUST have exactly 4 choices prefixed with A), B), C), D).
 2. The answer field MUST match one of the options verbatim.
-3. Every single MCQ and Flashcard MUST include an exact citation in the format: (Section: "Exact Section Name", Page: X).
+3. Every item MUST include 'evidence_text' containing the actual sentence/excerpt from the document that verifies the answer, plus the exact citation: (Section: "Exact Section Name", Page: X).
 4. Do not wrap the JSON in Markdown backticks. Return raw JSON object.
 """
 
@@ -1583,6 +1586,7 @@ CRITICAL RULES:
                     ],
                     "answer": f"A) {s[:80]}",
                     "explanation": f"According to {t} on page {p}, {s}",
+                    "evidence_text": sec.get("text") or s,
                     "citation": f'(Section: "{t}", Page: {p})'
                 })
 
@@ -1597,6 +1601,7 @@ CRITICAL RULES:
                     "question": f"What is the significance of {t} in {filename}?",
                     "answer": s,
                     "explanation": f"Document section {t} on page {p} details these findings.",
+                    "evidence_text": sec.get("text") or s,
                     "citation": f'(Section: "{t}", Page: {p})'
                 })
             return items_mcqs, items_cards
@@ -1623,10 +1628,18 @@ CRITICAL RULES:
                 sec = sections_sample[idx % len(sections_sample)] if sections_sample else {"title": "Overview", "page": 1}
                 m["citation"] = f'(Section: "{sec["title"]}", Page: {sec["page"]})'
 
+            if not m.get("evidence_text"):
+                sec = sections_sample[idx % len(sections_sample)] if sections_sample else {"title": "Overview", "page": 1, "text": ""}
+                m["evidence_text"] = sec.get("text") or m.get("explanation") or ""
+
         for idx, c in enumerate(final_flashcards):
             if not c.get("citation"):
                 sec = sections_sample[idx % len(sections_sample)] if sections_sample else {"title": "Overview", "page": 1}
                 c["citation"] = f'(Section: "{sec["title"]}", Page: {sec["page"]})'
+
+            if not c.get("evidence_text"):
+                sec = sections_sample[idx % len(sections_sample)] if sections_sample else {"title": "Overview", "page": 1, "text": ""}
+                c["evidence_text"] = sec.get("text") or c.get("explanation") or ""
 
         return {
             "mcqs": final_mcqs,

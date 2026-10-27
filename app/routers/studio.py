@@ -61,25 +61,29 @@ async def get_document_mindmap(
     dossier = storage.get_knowledge_dossier(doc_id, owner_id=client_id) or {}
     topics = dossier.get("topics") or []
     key_findings = dossier.get("key_findings") or []
+    node_map = storage.get_node_map(doc_id) or {}
 
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
 
     # 1. Central Document Root Node (Level 0)
     root_node_id = f"doc_{doc_id}"
+    root_summary = dossier.get("executive_summary") or f"Knowledge graph for {filename}"
     nodes.append({
         "id": root_node_id,
         "label": filename,
         "section_title": filename,
         "page_number": 1,
         "type": "root",
-        "summary": dossier.get("executive_summary") or f"Knowledge graph for {filename}",
+        "summary": root_summary,
+        "text": root_summary,
         "level": 0,
     })
 
     # 2. Executive Dossier Hub (Level 1)
     if topics or key_findings:
         dossier_hub_id = f"dossier_{doc_id}"
+        dossier_text = "\n".join([f"• {f}" for f in key_findings]) if key_findings else f"{len(topics)} topics identified."
         nodes.append({
             "id": dossier_hub_id,
             "label": "Core Themes & Findings",
@@ -87,6 +91,7 @@ async def get_document_mindmap(
             "page_number": 1,
             "type": "dossier",
             "summary": f"{len(topics)} topics & {len(key_findings)} core findings identified.",
+            "text": dossier_text,
             "level": 1,
         })
         edges.append({
@@ -106,6 +111,7 @@ async def get_document_mindmap(
                 "page_number": 1,
                 "type": "topic",
                 "summary": f"Key concept identified in {filename}",
+                "text": f"Topic '{topic}' extracted as a key thematic finding from {filename}.",
                 "level": 2,
             })
             edges.append({
@@ -123,7 +129,16 @@ async def get_document_mindmap(
             nid = item.get("node_id") or f"node_{level}_{idx}_{parent_id}"
             title = item.get("title") or item.get("name") or f"Section {idx+1}"
             page = item.get("page_index") or item.get("page") or 1
-            summary = item.get("summary") or (item.get("text") or item.get("content") or "")[:200].strip()
+
+            node_map_entry = node_map.get(nid, {}) if isinstance(node_map, dict) else {}
+            node_text = (
+                item.get("text")
+                or item.get("content")
+                or node_map_entry.get("text")
+                or node_map_entry.get("content")
+                or ""
+            ).strip()
+            summary = item.get("summary") or node_map_entry.get("summary") or node_text[:200].strip() or f"Section {title}"
 
             node_type = "chapter" if level == 1 else "section"
             nodes.append({
@@ -133,6 +148,7 @@ async def get_document_mindmap(
                 "page_number": page,
                 "type": node_type,
                 "summary": summary,
+                "text": node_text or summary,
                 "level": level,
             })
             edges.append({
