@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from core.dependencies import get_storage, get_document_service, get_llm_service, get_memory_service
+from core.dependencies import get_storage, get_document_service, get_llm_service, get_memory_service, get_client_id
 from core.storage import MemoryStorage
 from services.document_service import DocumentService
 from services.llm_service import LLMService
@@ -23,6 +23,7 @@ class QuizGenerateRequest(BaseModel):
 @router.get("/{doc_id}/mindmap")
 async def get_document_mindmap(
     doc_id: str,
+    client_id: str = Depends(get_client_id),
     storage: MemoryStorage = Depends(get_storage),
     doc_service: DocumentService = Depends(get_document_service),
     llm_service: LLMService = Depends(get_llm_service),
@@ -32,7 +33,7 @@ async def get_document_mindmap(
     into a structured node-edge graph for interactive visualization.
     Each node includes: id, label, section_title, page_number, type, summary, level.
     """
-    doc = storage.get_document(doc_id)
+    doc = storage.get_document(doc_id, owner_id=client_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document ID not found.")
 
@@ -50,7 +51,7 @@ async def get_document_mindmap(
         tree = []
 
     # Retrieve dossier if available
-    dossier = storage.get_knowledge_dossier(doc_id) or {}
+    dossier = storage.get_knowledge_dossier(doc_id, owner_id=client_id) or {}
     topics = dossier.get("topics") or []
     key_findings = dossier.get("key_findings") or []
 
@@ -165,6 +166,7 @@ async def get_document_mindmap(
 async def generate_document_quiz(
     doc_id: str,
     payload: Optional[QuizGenerateRequest] = None,
+    client_id: str = Depends(get_client_id),
     storage: MemoryStorage = Depends(get_storage),
     doc_service: DocumentService = Depends(get_document_service),
     llm_service: LLMService = Depends(get_llm_service),
@@ -175,7 +177,7 @@ async def generate_document_quiz(
     Each item includes question, options, answer, explanation, and exact citation (Section, Page).
     """
     t0 = time.monotonic()
-    doc = storage.get_document(doc_id)
+    doc = storage.get_document(doc_id, owner_id=client_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document ID not found.")
 
@@ -186,7 +188,7 @@ async def generate_document_quiz(
         tree = llm_service.normalize_tree(tree)
         storage.set_document_tree(doc_id, tree)
 
-    dossier = storage.get_knowledge_dossier(doc_id)
+    dossier = storage.get_knowledge_dossier(doc_id, owner_id=client_id)
 
     app_logger.info(f"[STUDIO-QUIZ] Generating quiz and flashcards for doc_id={doc_id} ('{filename}')...")
     result = await llm_service.generate_quiz_and_flashcards(

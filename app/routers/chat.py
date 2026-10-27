@@ -18,6 +18,7 @@ from core.dependencies import (
     get_rag_pipeline,
     get_storage,
     get_memory_service,
+    get_client_id,
 )
 from core.rag_pipeline import VectorlessRAG
 from services.llm_service import LLMService
@@ -28,9 +29,12 @@ router = APIRouter(tags=["Chat"])
 
 
 @router.post("/chat/new", response_model=NewChatResponse)
-async def create_chat(storage: MemoryStorage = Depends(get_storage)):
-    chat_id = storage.create_chat()
-    app_logger.info(f"Created new chat session: {chat_id}")
+async def create_chat(
+    storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
+):
+    chat_id = storage.create_chat(owner_id=client_id)
+    app_logger.info(f"Created new chat session: {chat_id} for client: {client_id}")
     return NewChatResponse(chat_id=chat_id)
 
 
@@ -39,11 +43,14 @@ async def attach_document_to_chat(
     chat_id: str,
     body: AttachDocRequest,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Attach an indexed document to an active conversation session."""
-    if not storage.tree_exists(body.doc_id):
+    if not storage.chat_exists(chat_id, owner_id=client_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    if not storage.tree_exists(body.doc_id, owner_id=client_id):
         raise HTTPException(status_code=404, detail="Document ID not found in memory")
-    storage.add_chat_doc(chat_id, body.doc_id, doc_name=body.doc_name)
+    storage.add_chat_doc(chat_id, body.doc_id, doc_name=body.doc_name, owner_id=client_id)
     app_logger.info(f"Attached document {body.doc_id} to chat session {chat_id}")
     return {"message": "Document attached successfully", "chat_id": chat_id, "doc_id": body.doc_id}
 
@@ -53,12 +60,15 @@ async def attach_multiple_documents_to_chat(
     chat_id: str,
     body: AttachMultipleDocsRequest,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Attach multiple indexed documents to an active conversation session."""
+    if not storage.chat_exists(chat_id, owner_id=client_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
     attached = []
     for doc_id in body.doc_ids:
-        if storage.tree_exists(doc_id):
-            storage.add_chat_doc(chat_id, doc_id)
+        if storage.tree_exists(doc_id, owner_id=client_id):
+            storage.add_chat_doc(chat_id, doc_id, owner_id=client_id)
             attached.append(doc_id)
     app_logger.info(f"Attached {len(attached)} documents to chat session {chat_id}")
     return {"message": f"Attached {len(attached)} documents successfully", "chat_id": chat_id, "doc_ids": attached}
@@ -68,12 +78,15 @@ async def attach_multiple_documents_to_chat(
 async def get_chat_documents(
     chat_id: str,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Return all attached documents for this session with status and page counts."""
-    docs = storage.get_chat_docs(chat_id)
+    if not storage.chat_exists(chat_id, owner_id=client_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    docs = storage.get_chat_docs(chat_id, owner_id=client_id)
     detailed_docs = []
     for d in docs:
-        doc_info = storage.get_document(d["doc_id"])
+        doc_info = storage.get_document(d["doc_id"], owner_id=client_id)
         if doc_info:
             detailed_docs.append({
                 "doc_id": d["doc_id"],
@@ -92,9 +105,12 @@ async def detach_specific_document_from_chat(
     chat_id: str,
     doc_id: str,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Detach a specific document from the active chat session."""
-    storage.remove_chat_doc(chat_id, doc_id=doc_id)
+    if not storage.chat_exists(chat_id, owner_id=client_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    storage.remove_chat_doc(chat_id, doc_id=doc_id, owner_id=client_id)
     app_logger.info(f"Detached document {doc_id} from chat session {chat_id}")
     return {"message": "Document detached successfully", "chat_id": chat_id, "doc_id": doc_id}
 
@@ -103,10 +119,13 @@ async def detach_specific_document_from_chat(
 async def detach_document_from_chat(
     chat_id: str,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Detach all documents from active chat session."""
-    storage.clear_chat_docs(chat_id)
-    storage.remove_chat_doc(chat_id)
+    if not storage.chat_exists(chat_id, owner_id=client_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    storage.clear_chat_docs(chat_id, owner_id=client_id)
+    storage.remove_chat_doc(chat_id, owner_id=client_id)
     app_logger.info(f"Cleared all documents from chat session {chat_id}")
     return {"message": "All documents detached successfully", "chat_id": chat_id}
 
@@ -118,9 +137,14 @@ async def ask_question(
     llm_service: LLMService = Depends(get_llm_service),
     rag_pipeline: VectorlessRAG = Depends(get_rag_pipeline),
     memory_service: MemoryService = Depends(get_memory_service),
+    client_id: str = Depends(get_client_id),
 ):
-    # Ensure chat session exists in persistent storage
-    storage.ensure_chat(request.chat_id)
+    # Ensure chat session exists in persistent storage and is owned by client_id
+    if storage.chat_exists(request.chat_id):
+        if not storage.chat_exists(request.chat_id, owner_id=client_id):
+            raise HTTPException(status_code=404, detail="Chat session not found")
+    else:
+        storage.create_chat(request.chat_id, owner_id=client_id)
 
     # 1. Resolve target document IDs for this query session
     target_doc_ids: List[str] = []
@@ -130,16 +154,18 @@ async def ask_question(
         target_doc_ids.append(request.doc_id)
 
     if target_doc_ids:
-        # Associate newly requested docs with this session
+        # Validate ownership of each explicitly requested document
         for did in target_doc_ids:
-            storage.add_chat_doc(request.chat_id, did)
+            if not storage.get_document(did, owner_id=client_id):
+                raise HTTPException(status_code=404, detail=f"Document {did} not found")
+            storage.add_chat_doc(request.chat_id, did, owner_id=client_id)
     else:
         # Check existing docs attached to this session
-        session_docs = storage.get_chat_docs(request.chat_id)
+        session_docs = storage.get_chat_docs(request.chat_id, owner_id=client_id)
         if session_docs:
             target_doc_ids = [d["doc_id"] for d in session_docs]
         else:
-            primary_id = storage.get_chat_doc(request.chat_id)
+            primary_id = storage.get_chat_doc(request.chat_id, owner_id=client_id)
             if primary_id:
                 target_doc_ids = [primary_id]
 
@@ -152,7 +178,7 @@ async def ask_question(
     error_docs = []
 
     for did in target_doc_ids:
-        doc_state = storage.get_document(did)
+        doc_state = storage.get_document(did, owner_id=client_id)
         if not doc_state:
             error_docs.append({"doc_id": did, "filename": did, "error": "Document not found or expired"})
         elif doc_state.get("status") == "ready" and doc_state.get("tree"):
@@ -193,12 +219,12 @@ async def ask_question(
     )
 
     # 4. Retrieve session memory (isolated short-term window + long-term rolling summary)
-    mem_context = memory_service.get_session_context(request.chat_id)
+    mem_context = memory_service.get_session_context(request.chat_id, owner_id=client_id)
     recent_turns = mem_context.get("recent_turns", [])
     session_summary = mem_context.get("session_summary")
 
-    # 5. Retrieve global workspace knowledge summary
-    global_knowledge = memory_service.get_global_knowledge()
+    # 5. Retrieve global workspace knowledge summary scoped to owner
+    global_knowledge = memory_service.get_global_knowledge(owner_id=client_id)
 
     is_arabic = any("\u0600" <= c <= "\u06ff" for c in request.query)
 
@@ -288,9 +314,9 @@ async def ask_question(
         finally:
             if full_answer:
                 clean_answer = re.sub(r'<!--STAGE:.*?-->\n?', '', full_answer).strip()
-                storage.add_message(request.chat_id, role="user", content=request.query)
+                storage.add_message(request.chat_id, role="user", content=request.query, owner_id=client_id)
                 storage.add_message(
-                    request.chat_id, role="assistant", content=clean_answer or full_answer
+                    request.chat_id, role="assistant", content=clean_answer or full_answer, owner_id=client_id
                 )
                 # Asynchronously update long-term rolling summary if conversation threshold reached
                 try:
@@ -307,17 +333,23 @@ async def ask_question(
 async def get_chat_history(
     chat_id: str,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
-    history = storage.get_chat_history(chat_id)
+    if not storage.chat_exists(chat_id, owner_id=client_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    history = storage.get_chat_history(chat_id, owner_id=client_id)
     return ChatHistoryResponse(history=history or [])
 
 
 # ── Long Memory & Conversation Management Endpoints ────────────────────────
 
 @router.get("/chats")
-async def list_all_chats(storage: MemoryStorage = Depends(get_storage)):
+async def list_all_chats(
+    storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
+):
     """Return all persisted chat sessions ordered by most recent."""
-    chats = storage.list_chats()
+    chats = storage.list_chats(owner_id=client_id)
     return {"chats": chats}
 
 
@@ -325,9 +357,12 @@ async def list_all_chats(storage: MemoryStorage = Depends(get_storage)):
 async def delete_chat(
     chat_id: str,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Permanently delete a chat session and all its messages."""
-    storage.delete_chat(chat_id)
+    deleted = storage.delete_chat(chat_id, owner_id=client_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Chat session not found")
     app_logger.info(f"Deleted chat session: {chat_id}")
     return {"message": "Chat deleted", "chat_id": chat_id}
 
@@ -341,7 +376,10 @@ async def rename_chat(
     chat_id: str,
     body: RenameChatRequest,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Update the display title of a chat session."""
-    storage.update_chat_title(chat_id, body.title)
+    if not storage.chat_exists(chat_id, owner_id=client_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    storage.update_chat_title(chat_id, body.title, owner_id=client_id)
     return {"message": "Title updated", "chat_id": chat_id, "title": body.title}

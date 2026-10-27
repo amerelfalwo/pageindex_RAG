@@ -10,6 +10,7 @@ and natively importable across Atlas services and external MCP clients (Claude D
 6. Internal Atlas Document Intelligence Tools (`atlas_list_documents`, `atlas_query_document`, `atlas_get_knowledge_dossier`).
 """
 
+import os
 import asyncio
 import json
 import re
@@ -261,92 +262,94 @@ def mcp_evaluate_math_expression(expression: str) -> str:
     return f"Math Evaluation Error: {res.get('error')}"
 
 
-@mcp.tool(
-    name="atlas_list_documents",
-    description="List all ingested documents in Atlas knowledge base with document IDs, filenames, page counts, and statuses.",
-)
-def mcp_atlas_list_documents() -> str:
-    """List all indexed documents stored in Atlas."""
-    docs = atlas_list_documents_impl()
-    if not docs:
-        return "No documents currently indexed in the Atlas knowledge base."
-
-    lines = ["### Atlas Ingested Documents\n"]
-    for idx, d in enumerate(docs, 1):
-        lines.append(
-            f"{idx}. **{d['filename']}** (ID: `{d['doc_id']}`)\n"
-            f"   - Status: `{d['status']}` | Pages: {d['page_count']} | Sections: {d['section_count']} | Method: {d['indexing_method']}"
-        )
-    return "\n".join(lines)
-
-
-@mcp.tool(
-    name="atlas_query_document",
-    description="Query a specific document tree in Atlas and retrieve grounded passages with exact (Section, Page) citations.",
-)
-def mcp_atlas_query_document(doc_id: str, query: str) -> str:
-    """Run vectorless hierarchical retrieval on a specific indexed document."""
-    res = atlas_query_document_impl(doc_id=doc_id, query=query)
-    if res.get("status") != "success":
-        return f"Error querying document {doc_id}: {res.get('error')}"
-
-    passages = res.get("passages", [])
-    if not passages:
-        return f"No matching sections found for query '{query}' in document {res.get('filename')}."
-
-    lines = [f"### Grounded Retrieval Passages for '{query}' in {res.get('filename')}\n"]
-    for idx, p in enumerate(passages, 1):
-        lines.append(f"{idx}. **[{p['section_title']} - Page {p['page']}]** (Citation: `{p['citation']}`)")
-        lines.append(f"{p['text']}\n")
-    return "\n".join(lines).strip()
-
-
-@mcp.tool(
-    name="atlas_get_knowledge_dossier",
-    description="Retrieve the executive knowledge dossier (summary, key entities, findings, topics) and workspace global summary for a document.",
-)
-def mcp_atlas_get_knowledge_dossier(doc_id: str) -> str:
-    """Retrieve structured document dossier and workspace knowledge synthesis."""
-    res = atlas_get_knowledge_dossier_impl(doc_id=doc_id)
-    if res.get("status") != "success":
-        return f"Knowledge Dossier for {doc_id}: {res.get('message', res.get('error', 'Not found'))}"
-
-    lines = [
-        f"### Knowledge Dossier: {res.get('filename')} (ID: `{doc_id}`)\n",
-        f"**Executive Summary**:\n{res.get('executive_summary')}\n",
-        f"**Key Entities**: {', '.join(res.get('key_entities', []))}\n",
-        "**Key Findings**:",
-    ]
-    for kf in res.get("key_findings", []):
-        lines.append(f"- {kf}")
-    lines.append(f"\n**Topics**: {', '.join(res.get('topics', []))}\n")
-
-    if res.get("global_workspace_summary"):
-        lines.append(f"**Workspace Global Summary**:\n{res.get('global_workspace_summary')}")
-
-    return "\n".join(lines).strip()
-
-
 # ==============================================================================
-# FASTMCP RESOURCES
+# INTERNAL ATLAS DOCUMENT INTELLIGENCE TOOLS (Gated by ATLAS_MCP_INTERNAL_TOOLS)
 # ==============================================================================
+ENABLE_INTERNAL_TOOLS = os.getenv("ATLAS_MCP_INTERNAL_TOOLS", "false").lower() in ("true", "1", "yes")
 
-@mcp.resource("atlas://documents")
-def resource_atlas_documents() -> str:
-    """Resource returning JSON list of all documents in the knowledge base."""
-    docs = atlas_list_documents_impl()
-    return json.dumps(docs, indent=2)
+if ENABLE_INTERNAL_TOOLS:
+    @mcp.tool(
+        name="atlas_list_documents",
+        description="List all ingested documents in Atlas knowledge base with document IDs, filenames, page counts, and statuses.",
+    )
+    def mcp_atlas_list_documents() -> str:
+        """List all indexed documents stored in Atlas."""
+        docs = atlas_list_documents_impl()
+        if not docs:
+            return "No documents currently indexed in the Atlas knowledge base."
+
+        lines = ["### Atlas Ingested Documents\n"]
+        for idx, d in enumerate(docs, 1):
+            lines.append(
+                f"{idx}. **{d['filename']}** (ID: `{d['doc_id']}`)\n"
+                f"   - Status: `{d['status']}` | Pages: {d['page_count']} | Sections: {d['section_count']} | Method: {d['indexing_method']}"
+            )
+        return "\n".join(lines)
 
 
-@mcp.resource("atlas://knowledge-summary")
-def resource_atlas_knowledge_summary() -> str:
-    """Resource returning the collective master knowledge summary of the workspace."""
-    try:
-        from core.storage import storage
-        summary = storage.get_global_knowledge_summary() or {}
-        return json.dumps(summary, indent=2)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    @mcp.tool(
+        name="atlas_query_document",
+        description="Query a specific document tree in Atlas and retrieve grounded passages with exact (Section, Page) citations.",
+    )
+    def mcp_atlas_query_document(doc_id: str, query: str) -> str:
+        """Run vectorless hierarchical retrieval on a specific indexed document."""
+        res = atlas_query_document_impl(doc_id=doc_id, query=query)
+        if res.get("status") != "success":
+            return f"Error querying document {doc_id}: {res.get('error')}"
+
+        passages = res.get("passages", [])
+        if not passages:
+            return f"No matching sections found for query '{query}' in document {res.get('filename')}."
+
+        lines = [f"### Grounded Retrieval Passages for '{query}' in {res.get('filename')}\n"]
+        for idx, p in enumerate(passages, 1):
+            lines.append(f"{idx}. **[{p['section_title']} - Page {p['page']}]** (Citation: `{p['citation']}`)")
+            lines.append(f"{p['text']}\n")
+        return "\n".join(lines).strip()
+
+
+    @mcp.tool(
+        name="atlas_get_knowledge_dossier",
+        description="Retrieve the executive knowledge dossier (summary, key entities, findings, topics) and workspace global summary for a document.",
+    )
+    def mcp_atlas_get_knowledge_dossier(doc_id: str) -> str:
+        """Retrieve structured document dossier and workspace knowledge synthesis."""
+        res = atlas_get_knowledge_dossier_impl(doc_id=doc_id)
+        if res.get("status") != "success":
+            return f"Knowledge Dossier for {doc_id}: {res.get('message', res.get('error', 'Not found'))}"
+
+        lines = [
+            f"### Knowledge Dossier: {res.get('filename')} (ID: `{doc_id}`)\n",
+            f"**Executive Summary**:\n{res.get('executive_summary')}\n",
+            f"**Key Entities**: {', '.join(res.get('key_entities', []))}\n",
+            "**Key Findings**:",
+        ]
+        for kf in res.get("key_findings", []):
+            lines.append(f"- {kf}")
+        lines.append(f"\n**Topics**: {', '.join(res.get('topics', []))}\n")
+
+        if res.get("global_workspace_summary"):
+            lines.append(f"**Workspace Global Summary**:\n{res.get('global_workspace_summary')}")
+
+        return "\n".join(lines).strip()
+
+
+    @mcp.resource("atlas://documents")
+    def resource_atlas_documents() -> str:
+        """Resource returning JSON list of all documents in the knowledge base."""
+        docs = atlas_list_documents_impl()
+        return json.dumps(docs, indent=2)
+
+
+    @mcp.resource("atlas://knowledge-summary")
+    def resource_atlas_knowledge_summary() -> str:
+        """Resource returning the collective master knowledge summary of the workspace."""
+        try:
+            from core.storage import storage
+            summary = storage.get_global_knowledge_summary() or {}
+            return json.dumps(summary, indent=2)
+        except Exception as e:
+            return json.dumps({"error": str(e)})
 
 
 if __name__ == "__main__":

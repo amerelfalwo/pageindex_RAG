@@ -49,6 +49,12 @@ except Exception as mcp_err:
     app_logger.warning(f"Could not mount FastMCP at /mcp: {mcp_err}")
 
 
+@app.get("/", tags=["Health"])
+async def root():
+    """Public root endpoint."""
+    return {"message": "Atlas - Document Intelligence API", "docs": "/docs", "health": "/health"}
+
+
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Health check endpoint to verify service availability and database status."""

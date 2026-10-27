@@ -48,18 +48,27 @@ class MemoryStorage:
     # ──────────────────────────────────────────────────────────────────────
     # Document hash / cache helpers
     # ──────────────────────────────────────────────────────────────────────
-    def get_doc_by_hash(self, content_hash: str) -> Optional[Dict[str, Any]]:
+    def get_doc_by_hash(self, content_hash: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         # 1. In-memory hot cache
         doc_id = self._hash_to_doc_id.get(content_hash)
         if doc_id and doc_id in self._documents:
             doc = self._documents[doc_id]
-            if doc.get("status") == "ready" and doc.get("tree"):
-                return doc
-            if doc.get("status") == "indexing":
-                return doc
+            if owner_id is not None:
+                doc_owner = doc.get("owner_id")
+                if doc_owner is None:
+                    db_meta = persistent_db.get_doc_meta(doc_id)
+                    doc_owner = db_meta.get("owner_id") if db_meta else None
+                    doc["owner_id"] = doc_owner
+                if doc_owner != owner_id:
+                    doc = None
+            if doc:
+                if doc.get("status") == "ready" and doc.get("tree"):
+                    return doc
+                if doc.get("status") == "indexing":
+                    return doc
 
-        # 2. SQLite metadata
-        db_meta = persistent_db.find_doc_by_hash(content_hash)
+        # 2. Persistent metadata
+        db_meta = persistent_db.find_doc_by_hash(content_hash, owner_id=owner_id)
         if db_meta:
             doc_id = db_meta["doc_id"]
             if db_meta.get("status") == "indexing":
@@ -74,6 +83,7 @@ class MemoryStorage:
                     "section_count": 0,
                     "content_hash": content_hash,
                     "file_path": db_meta.get("file_path"),
+                    "owner_id": db_meta.get("owner_id"),
                     "error": None,
                 }
                 self._documents[doc_id] = doc_obj
@@ -119,6 +129,7 @@ class MemoryStorage:
                     "duration": db_meta.get("duration"),
                     "error": None,
                     "content_hash": content_hash,
+                    "owner_id": db_meta.get("owner_id"),
                     "created_at": cached.get("created_at", time.time()),
                     "updated_at": time.time(),
                 }
@@ -194,6 +205,7 @@ class MemoryStorage:
         file_path: Optional[str] = None,
         current_stage: str = "Processing PDF",
         progress: int = 10,
+        owner_id: Optional[str] = None,
     ) -> str:
         document_id = doc_id or str(uuid.uuid4())
         now = time.time()
@@ -212,6 +224,7 @@ class MemoryStorage:
             "error": None,
             "content_hash": content_hash,
             "file_path": file_path,
+            "owner_id": owner_id,
             "created_at": now,
             "updated_at": now,
         }
@@ -227,6 +240,7 @@ class MemoryStorage:
             current_stage=current_stage,
             content_hash=content_hash,
             file_path=file_path,
+            owner_id=owner_id,
         )
         return document_id
 
@@ -404,15 +418,25 @@ class MemoryStorage:
             file_path=doc.get("file_path"),
         )
 
-    def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
+    def get_document(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         if not doc_id:
             return None
-        doc = self._documents.get(doc_id)
-        if doc and doc.get("status") == "ready" and doc.get("tree"):
-            return doc
 
-        # Check Persistent DB
-        db_meta = persistent_db.get_doc_meta(doc_id)
+        # Check Persistent DB first if owner_id is specified to enforce isolation
+        db_meta = persistent_db.get_doc_meta(doc_id, owner_id=owner_id) if owner_id is not None else persistent_db.get_doc_meta(doc_id)
+        if owner_id is not None and not db_meta:
+            return None
+
+        doc = self._documents.get(doc_id)
+        if doc:
+            if owner_id is not None:
+                if doc.get("owner_id") is None and db_meta:
+                    doc["owner_id"] = db_meta.get("owner_id")
+                if doc.get("owner_id") != owner_id:
+                    return None
+            if doc.get("status") == "ready" and doc.get("tree"):
+                return doc
+
         if db_meta:
             doc_obj = {
                 "doc_id": doc_id,
@@ -428,6 +452,7 @@ class MemoryStorage:
                 "error": db_meta.get("error"),
                 "content_hash": db_meta.get("content_hash"),
                 "file_path": db_meta.get("file_path"),
+                "owner_id": db_meta.get("owner_id"),
                 "created_at": db_meta.get("created_at", time.time()),
                 "updated_at": db_meta.get("updated_at", time.time()),
             }
@@ -498,24 +523,25 @@ class MemoryStorage:
     # ──────────────────────────────────────────────────────────────────────
     # Legacy / convenience tree helpers
     # ──────────────────────────────────────────────────────────────────────
-    def save_tree(self, tree: Any, doc_id: Optional[str] = None, filename: str = "document.pdf") -> str:
+    def save_tree(self, tree: Any, doc_id: Optional[str] = None, filename: str = "document.pdf", owner_id: Optional[str] = None) -> str:
         document_id = doc_id or str(uuid.uuid4())
         self.set_document_ready(document_id, tree=tree, filename=filename)
+        if owner_id:
+            persistent_db.upsert_doc_meta(doc_id=document_id, filename=filename, status="ready", owner_id=owner_id)
         return document_id
 
-    def get_tree(self, doc_id: str) -> Optional[Any]:
-        doc = self._documents.get(doc_id)
+    def get_tree(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Any]:
+        doc = self.get_document(doc_id, owner_id=owner_id)
         if doc and doc.get("tree") is not None:
             return doc["tree"]
-        return self._trees.get(doc_id)
+        return self._trees.get(doc_id) if owner_id is None else None
 
-    def tree_exists(self, doc_id: str) -> bool:
-        if doc_id in self._documents and self._documents[doc_id].get("status") == "ready" and self._documents[doc_id].get("tree"):
-            return True
-        return doc_id in self._trees
+    def tree_exists(self, doc_id: str, owner_id: Optional[str] = None) -> bool:
+        doc = self.get_document(doc_id, owner_id=owner_id)
+        return doc is not None and doc.get("status") == "ready" and doc.get("tree") is not None
 
-    def list_documents(self) -> List[Dict[str, Any]]:
-        db_docs = persistent_db.list_docs()
+    def list_documents(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        db_docs = persistent_db.list_docs(owner_id=owner_id)
         results = []
         for d in db_docs:
             doc_id = d["doc_id"]
@@ -527,98 +553,112 @@ class MemoryStorage:
                 results.append(d)
         return results
 
-    def get_document_tree(self, doc_id: str) -> Optional[Any]:
-        doc = self.get_document(doc_id)
+    def get_document_tree(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Any]:
+        doc = self.get_document(doc_id, owner_id=owner_id)
         if doc and doc.get("tree") is not None:
             return doc["tree"]
-        return self._trees.get(doc_id)
+        return self._trees.get(doc_id) if owner_id is None else None
 
-    def delete_document(self, doc_id: str) -> bool:
+    def delete_document(self, doc_id: str, owner_id: Optional[str] = None) -> bool:
+        if owner_id is not None:
+            doc = self.get_document(doc_id, owner_id=owner_id)
+            if not doc:
+                return False
         self._documents.pop(doc_id, None)
         self._trees.pop(doc_id, None)
         self._node_maps.pop(doc_id, None)
         self._flat_sections.pop(doc_id, None)
         self._active_tasks.pop(doc_id, None)
         persistent_db.delete_doc_index(doc_id)
-        return persistent_db.delete_doc(doc_id)
+        return persistent_db.delete_doc(doc_id, owner_id=owner_id)
 
 
     # ──────────────────────────────────────────────────────────────────────
-    # Chat operations  (all backed by SQLite now)
+    # Chat operations  (backed by persistent DB)
     # ──────────────────────────────────────────────────────────────────────
-    def create_chat(self, chat_id: Optional[str] = None, title: Optional[str] = None) -> str:
+    def create_chat(self, chat_id: Optional[str] = None, title: Optional[str] = None, owner_id: Optional[str] = None) -> str:
         cid = chat_id or str(uuid.uuid4())
-        persistent_db.create_chat(chat_id=cid, title=title)
+        persistent_db.create_chat(chat_id=cid, title=title, owner_id=owner_id)
         return cid
 
-    def get_chat_history(self, chat_id: str) -> List[Dict[str, str]]:
-        if not self.chat_exists(chat_id):
+    def get_chat(self, chat_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        return persistent_db.get_chat(chat_id, owner_id=owner_id)
+
+    def get_chat_history(self, chat_id: str, owner_id: Optional[str] = None) -> List[Dict[str, str]]:
+        if not self.chat_exists(chat_id, owner_id=owner_id):
+            if owner_id is not None:
+                return []
             persistent_db.create_chat(chat_id=chat_id)
             return []
         return persistent_db.get_messages(chat_id)
 
-    def chat_exists(self, chat_id: str) -> bool:
-        return persistent_db.get_chat(chat_id) is not None
+    def chat_exists(self, chat_id: str, owner_id: Optional[str] = None) -> bool:
+        return persistent_db.get_chat(chat_id, owner_id=owner_id) is not None
 
-    def ensure_chat(self, chat_id: str) -> List[Dict[str, str]]:
-        if not self.chat_exists(chat_id):
-            persistent_db.create_chat(chat_id=chat_id)
+    def ensure_chat(self, chat_id: str, owner_id: Optional[str] = None) -> List[Dict[str, str]]:
+        if not self.chat_exists(chat_id, owner_id=owner_id):
+            persistent_db.create_chat(chat_id=chat_id, owner_id=owner_id)
         return persistent_db.get_messages(chat_id)
 
-    def add_message(self, chat_id: str, role: str, content: str) -> None:
-        persistent_db.add_message(chat_id=chat_id, role=role, content=content)
+    def add_message(self, chat_id: str, role: str, content: str, owner_id: Optional[str] = None) -> None:
+        persistent_db.add_message(chat_id=chat_id, role=role, content=content, owner_id=owner_id)
 
-    def update_chat_history(self, chat_id: str, history: List[Dict[str, str]]) -> None:
+    def update_chat_history(self, chat_id: str, history: List[Dict[str, str]], owner_id: Optional[str] = None) -> None:
+        if owner_id and not self.chat_exists(chat_id, owner_id=owner_id):
+            return
         persistent_db.clear_messages(chat_id)
         for msg in history:
-            persistent_db.add_message(chat_id=chat_id, role=msg["role"], content=msg["content"])
+            persistent_db.add_message(chat_id=chat_id, role=msg["role"], content=msg["content"], owner_id=owner_id)
 
-    def set_chat_doc(self, chat_id: str, doc_id: str, doc_name: Optional[str] = None) -> None:
-        # ensure the chat row exists first
-        if not self.chat_exists(chat_id):
-            persistent_db.create_chat(chat_id=chat_id)
-        # look up doc name if not supplied
+    def set_chat_doc(self, chat_id: str, doc_id: str, doc_name: Optional[str] = None, owner_id: Optional[str] = None) -> None:
+        if not self.chat_exists(chat_id, owner_id=owner_id):
+            persistent_db.create_chat(chat_id=chat_id, owner_id=owner_id)
         if doc_name is None:
-            doc = self._documents.get(doc_id)
+            doc = self.get_document(doc_id, owner_id=owner_id)
             doc_name = doc.get("filename") if doc else None
         persistent_db.set_chat_doc(chat_id=chat_id, doc_id=doc_id, doc_name=doc_name)
         persistent_db.add_chat_document(chat_id=chat_id, doc_id=doc_id, doc_name=doc_name)
 
-    def add_chat_doc(self, chat_id: str, doc_id: str, doc_name: Optional[str] = None) -> None:
-        if not self.chat_exists(chat_id):
-            persistent_db.create_chat(chat_id=chat_id)
+    def add_chat_doc(self, chat_id: str, doc_id: str, doc_name: Optional[str] = None, owner_id: Optional[str] = None) -> None:
+        if not self.chat_exists(chat_id, owner_id=owner_id):
+            persistent_db.create_chat(chat_id=chat_id, owner_id=owner_id)
         if doc_name is None:
-            doc = self._documents.get(doc_id)
+            doc = self.get_document(doc_id, owner_id=owner_id)
             doc_name = doc.get("filename") if doc else None
         persistent_db.add_chat_document(chat_id=chat_id, doc_id=doc_id, doc_name=doc_name)
 
-    def get_chat_doc(self, chat_id: str) -> Optional[str]:
-        # Return primary attached doc or first multi-doc
-        meta = persistent_db.get_chat(chat_id)
+    def get_chat_doc(self, chat_id: str, owner_id: Optional[str] = None) -> Optional[str]:
+        meta = persistent_db.get_chat(chat_id, owner_id=owner_id)
         if meta and meta.get("doc_id"):
             return meta["doc_id"]
-        docs = persistent_db.get_chat_documents(chat_id)
+        docs = persistent_db.get_chat_documents(chat_id, owner_id=owner_id)
         return docs[0]["doc_id"] if docs else None
 
-    def get_chat_docs(self, chat_id: str) -> List[Dict[str, Any]]:
-        return persistent_db.get_chat_documents(chat_id)
+    def get_chat_docs(self, chat_id: str, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return persistent_db.get_chat_documents(chat_id, owner_id=owner_id)
 
-    def remove_chat_doc(self, chat_id: str, doc_id: Optional[str] = None) -> None:
+    def remove_chat_doc(self, chat_id: str, doc_id: Optional[str] = None, owner_id: Optional[str] = None) -> None:
+        if owner_id and not self.chat_exists(chat_id, owner_id=owner_id):
+            return
         if doc_id:
             persistent_db.remove_chat_document(chat_id, doc_id)
         else:
             persistent_db.remove_chat_doc(chat_id)
 
-    def clear_chat_docs(self, chat_id: str) -> None:
+    def clear_chat_docs(self, chat_id: str, owner_id: Optional[str] = None) -> None:
+        if owner_id and not self.chat_exists(chat_id, owner_id=owner_id):
+            return
         persistent_db.clear_chat_documents(chat_id)
 
-    def delete_chat(self, chat_id: str) -> None:
-        persistent_db.delete_chat(chat_id)
+    def delete_chat(self, chat_id: str, owner_id: Optional[str] = None) -> bool:
+        return persistent_db.delete_chat(chat_id, owner_id=owner_id)
 
-    def list_chats(self) -> List[Dict[str, Any]]:
-        return persistent_db.list_chats()
+    def list_chats(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return persistent_db.list_chats(owner_id=owner_id)
 
-    def update_chat_title(self, chat_id: str, title: str) -> None:
+    def update_chat_title(self, chat_id: str, title: str, owner_id: Optional[str] = None) -> None:
+        if owner_id and not self.chat_exists(chat_id, owner_id=owner_id):
+            return
         persistent_db.update_chat_title(chat_id=chat_id, title=title)
 
     # ── session long memory & rolling summaries ─────────────────────────────
@@ -628,7 +668,6 @@ class MemoryStorage:
     def get_chat_summary(self, chat_id: str) -> Optional[Dict[str, Any]]:
         return persistent_db.get_chat_summary(chat_id=chat_id)
 
-    # ── global knowledge memory & document dossiers ────────────────────────
     def save_knowledge_dossier(
         self,
         doc_id: str,
@@ -637,6 +676,7 @@ class MemoryStorage:
         key_entities: Optional[List[str]] = None,
         key_findings: Optional[List[str]] = None,
         topics: Optional[List[str]] = None,
+        owner_id: Optional[str] = None,
     ) -> None:
         persistent_db.save_knowledge_dossier(
             doc_id=doc_id,
@@ -647,11 +687,11 @@ class MemoryStorage:
             topics=topics,
         )
 
-    def get_knowledge_dossier(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        return persistent_db.get_knowledge_dossier(doc_id)
+    def get_knowledge_dossier(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        return persistent_db.get_knowledge_dossier(doc_id, owner_id=owner_id)
 
-    def list_knowledge_dossiers(self) -> List[Dict[str, Any]]:
-        return persistent_db.list_knowledge_dossiers()
+    def list_knowledge_dossiers(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        return persistent_db.list_knowledge_dossiers(owner_id=owner_id)
 
     def delete_knowledge_dossier(self, doc_id: str) -> None:
         persistent_db.delete_knowledge_dossier(doc_id)
@@ -661,15 +701,17 @@ class MemoryStorage:
         collective_summary: str,
         total_documents: int,
         key_insights: Optional[List[str]] = None,
+        owner_id: Optional[str] = None,
     ) -> None:
         persistent_db.save_global_knowledge_summary(
             collective_summary=collective_summary,
             total_documents=total_documents,
             key_insights=key_insights,
+            owner_id=owner_id,
         )
 
-    def get_global_knowledge_summary(self) -> Optional[Dict[str, Any]]:
-        return persistent_db.get_global_knowledge_summary()
+    def get_global_knowledge_summary(self, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        return persistent_db.get_global_knowledge_summary(owner_id=owner_id)
 
 
 # Global singleton storage instance

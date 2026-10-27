@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS chats (
     title       TEXT,
     doc_id      TEXT,
     doc_name    TEXT,
+    owner_id    TEXT,
     created_at  REAL NOT NULL,
     updated_at  REAL NOT NULL
 );
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS doc_meta (
     error           TEXT,
     content_hash    TEXT,
     file_path       TEXT,
+    owner_id        TEXT,
     created_at      REAL NOT NULL,
     updated_at      REAL NOT NULL
 );
@@ -111,6 +113,7 @@ CREATE TABLE IF NOT EXISTS knowledge_memory (
 
 CREATE TABLE IF NOT EXISTS global_knowledge_summary (
     id                  TEXT PRIMARY KEY,
+    owner_id            TEXT,
     collective_summary  TEXT NOT NULL,
     total_documents     INTEGER DEFAULT 0,
     key_insights        TEXT,
@@ -158,9 +161,23 @@ class SQLitePersistentDB:
                 ("indexing_method", "TEXT", "NULL"),
                 ("duration", "REAL", "NULL"),
                 ("error", "TEXT", "NULL"),
+                ("owner_id", "TEXT", "NULL"),
             ]:
                 if col not in existing_cols:
                     conn.execute(f"ALTER TABLE doc_meta ADD COLUMN {col} {col_type} DEFAULT {default_val}")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_doc_meta_owner ON doc_meta(owner_id)")
+
+            cursor = conn.execute("PRAGMA table_info(chats)")
+            chat_cols = {row["name"] for row in cursor.fetchall()}
+            if "owner_id" not in chat_cols:
+                conn.execute("ALTER TABLE chats ADD COLUMN owner_id TEXT DEFAULT NULL")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_chats_owner ON chats(owner_id)")
+
+            cursor = conn.execute("PRAGMA table_info(global_knowledge_summary)")
+            gks_cols = {row["name"] for row in cursor.fetchall()}
+            if "owner_id" not in gks_cols:
+                conn.execute("ALTER TABLE global_knowledge_summary ADD COLUMN owner_id TEXT DEFAULT NULL")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sqlite_gks_owner ON global_knowledge_summary(owner_id)")
 
             # Migrate existing chats.doc_id into chat_documents table
             conn.execute("""
@@ -170,26 +187,36 @@ class SQLitePersistentDB:
             """)
 
     # ── chat CRUD ───────────────────────────────────────────────────────────
-    def create_chat(self, chat_id: Optional[str] = None, title: Optional[str] = None) -> str:
+    def create_chat(self, chat_id: Optional[str] = None, title: Optional[str] = None, owner_id: Optional[str] = None) -> str:
         cid = chat_id or str(uuid.uuid4())
         now = time.time()
         with self._tx() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO chats(chat_id, title, created_at, updated_at) VALUES(?,?,?,?)",
-                (cid, title, now, now),
+                "INSERT OR IGNORE INTO chats(chat_id, title, owner_id, created_at, updated_at) VALUES(?,?,?,?,?)",
+                (cid, title, owner_id, now, now),
             )
         return cid
 
-    def get_chat(self, chat_id: str) -> Optional[Dict[str, Any]]:
-        row = self._conn().execute(
-            "SELECT * FROM chats WHERE chat_id=?", (chat_id,)
-        ).fetchone()
+    def get_chat(self, chat_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        if owner_id:
+            row = self._conn().execute(
+                "SELECT * FROM chats WHERE chat_id=? AND owner_id=?", (chat_id, owner_id)
+            ).fetchone()
+        else:
+            row = self._conn().execute(
+                "SELECT * FROM chats WHERE chat_id=?", (chat_id,)
+            ).fetchone()
         return dict(row) if row else None
 
-    def list_chats(self) -> List[Dict[str, Any]]:
-        rows = self._conn().execute(
-            "SELECT * FROM chats ORDER BY updated_at DESC"
-        ).fetchall()
+    def list_chats(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        if owner_id:
+            rows = self._conn().execute(
+                "SELECT * FROM chats WHERE owner_id=? ORDER BY updated_at DESC", (owner_id,)
+            ).fetchall()
+        else:
+            rows = self._conn().execute(
+                "SELECT * FROM chats ORDER BY updated_at DESC"
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def update_chat_title(self, chat_id: str, title: str) -> None:
@@ -213,17 +240,21 @@ class SQLitePersistentDB:
                 (time.time(), chat_id),
             )
 
-    def delete_chat(self, chat_id: str) -> None:
+    def delete_chat(self, chat_id: str, owner_id: Optional[str] = None) -> bool:
         with self._tx() as conn:
-            conn.execute("DELETE FROM chats WHERE chat_id=?", (chat_id,))
+            if owner_id:
+                cur = conn.execute("DELETE FROM chats WHERE chat_id=? AND owner_id=?", (chat_id, owner_id))
+            else:
+                cur = conn.execute("DELETE FROM chats WHERE chat_id=?", (chat_id,))
+            return cur.rowcount > 0
 
     # ── message CRUD ────────────────────────────────────────────────────────
-    def add_message(self, chat_id: str, role: str, content: str) -> None:
+    def add_message(self, chat_id: str, role: str, content: str, owner_id: Optional[str] = None) -> None:
         now = time.time()
         with self._tx() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO chats(chat_id, title, created_at, updated_at) VALUES(?, 'New research', ?, ?)",
-                (chat_id, now, now),
+                "INSERT OR IGNORE INTO chats(chat_id, title, owner_id, created_at, updated_at) VALUES(?, 'New research', ?, ?, ?)",
+                (chat_id, owner_id, now, now),
             )
             conn.execute(
                 "INSERT INTO messages(chat_id, role, content, created_at) VALUES(?,?,?,?)",
@@ -263,6 +294,7 @@ class SQLitePersistentDB:
         error: Optional[str] = None,
         content_hash: Optional[str] = None,
         file_path: Optional[str] = None,
+        owner_id: Optional[str] = None,
     ) -> None:
         now = time.time()
         with self._tx() as conn:
@@ -271,9 +303,9 @@ class SQLitePersistentDB:
                 INSERT INTO doc_meta(
                     doc_id, filename, status, page_count, section_count,
                     progress, current_stage, indexing_method, duration,
-                    error, content_hash, file_path, created_at, updated_at
+                    error, content_hash, file_path, owner_id, created_at, updated_at
                 )
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(doc_id) DO UPDATE SET
                     filename=excluded.filename,
                     status=excluded.status,
@@ -286,36 +318,57 @@ class SQLitePersistentDB:
                     error=excluded.error,
                     content_hash=COALESCE(excluded.content_hash, doc_meta.content_hash),
                     file_path=COALESCE(excluded.file_path, doc_meta.file_path),
+                    owner_id=COALESCE(excluded.owner_id, doc_meta.owner_id),
                     updated_at=excluded.updated_at
                 """,
                 (
                     doc_id, filename, status, page_count, section_count,
                     progress, current_stage, indexing_method, duration,
-                    error, content_hash, file_path, now, now
+                    error, content_hash, file_path, owner_id, now, now
                 ),
             )
 
-    def get_doc_meta(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        row = self._conn().execute(
-            "SELECT * FROM doc_meta WHERE doc_id=?", (doc_id,)
-        ).fetchone()
+    def get_doc_meta(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        if owner_id:
+            row = self._conn().execute(
+                "SELECT * FROM doc_meta WHERE doc_id=? AND owner_id=?", (doc_id, owner_id)
+            ).fetchone()
+        else:
+            row = self._conn().execute(
+                "SELECT * FROM doc_meta WHERE doc_id=?", (doc_id,)
+            ).fetchone()
         return dict(row) if row else None
 
-    def list_docs(self) -> List[Dict[str, Any]]:
-        rows = self._conn().execute(
-            "SELECT * FROM doc_meta ORDER BY created_at DESC"
-        ).fetchall()
+    def list_docs(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        if owner_id:
+            rows = self._conn().execute(
+                "SELECT * FROM doc_meta WHERE owner_id=? ORDER BY created_at DESC", (owner_id,)
+            ).fetchall()
+        else:
+            rows = self._conn().execute(
+                "SELECT * FROM doc_meta ORDER BY created_at DESC"
+            ).fetchall()
         return [dict(r) for r in rows]
 
-    def find_doc_by_hash(self, content_hash: str) -> Optional[Dict[str, Any]]:
-        row = self._conn().execute(
-            "SELECT * FROM doc_meta WHERE content_hash=? ORDER BY updated_at DESC LIMIT 1",
-            (content_hash,),
-        ).fetchone()
+    def find_doc_by_hash(self, content_hash: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        if owner_id:
+            row = self._conn().execute(
+                "SELECT * FROM doc_meta WHERE content_hash=? AND owner_id=? ORDER BY updated_at DESC LIMIT 1",
+                (content_hash, owner_id),
+            ).fetchone()
+        else:
+            row = self._conn().execute(
+                "SELECT * FROM doc_meta WHERE content_hash=? ORDER BY updated_at DESC LIMIT 1",
+                (content_hash,),
+            ).fetchone()
         return dict(row) if row else None
 
-    def delete_doc(self, doc_id: str) -> bool:
+    def delete_doc(self, doc_id: str, owner_id: Optional[str] = None) -> bool:
         with self._tx() as conn:
+            if owner_id:
+                doc = self.get_doc_meta(doc_id, owner_id=owner_id)
+                if not doc:
+                    return False
             cur = conn.execute("DELETE FROM doc_meta WHERE doc_id=?", (doc_id,))
             conn.execute("UPDATE chats SET doc_id=NULL, doc_name=NULL WHERE doc_id=?", (doc_id,))
             conn.execute("DELETE FROM chat_documents WHERE doc_id=?", (doc_id,))
@@ -434,7 +487,11 @@ class SQLitePersistentDB:
                     (now, chat_id),
                 )
 
-    def get_chat_documents(self, chat_id: str) -> List[Dict[str, Any]]:
+    def get_chat_documents(self, chat_id: str, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        if owner_id:
+            chat = self.get_chat(chat_id, owner_id=owner_id)
+            if not chat:
+                return []
         rows = self._conn().execute(
             """
             SELECT cd.chat_id, cd.doc_id, cd.doc_name, cd.attached_at,
@@ -513,10 +570,20 @@ class SQLitePersistentDB:
                 ),
             )
 
-    def get_knowledge_dossier(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        row = self._conn().execute(
-            "SELECT * FROM knowledge_memory WHERE doc_id=?", (doc_id,)
-        ).fetchone()
+    def get_knowledge_dossier(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        if owner_id:
+            row = self._conn().execute(
+                """
+                SELECT km.* FROM knowledge_memory km
+                JOIN doc_meta dm ON km.doc_id = dm.doc_id
+                WHERE km.doc_id=? AND dm.owner_id=?
+                """,
+                (doc_id, owner_id),
+            ).fetchone()
+        else:
+            row = self._conn().execute(
+                "SELECT * FROM knowledge_memory WHERE doc_id=?", (doc_id,)
+            ).fetchone()
         if not row:
             return None
         res = dict(row)
@@ -528,10 +595,21 @@ class SQLitePersistentDB:
                     res[k] = []
         return res
 
-    def list_knowledge_dossiers(self) -> List[Dict[str, Any]]:
-        rows = self._conn().execute(
-            "SELECT * FROM knowledge_memory ORDER BY updated_at DESC"
-        ).fetchall()
+    def list_knowledge_dossiers(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        if owner_id:
+            rows = self._conn().execute(
+                """
+                SELECT km.* FROM knowledge_memory km
+                JOIN doc_meta dm ON km.doc_id = dm.doc_id
+                WHERE dm.owner_id=?
+                ORDER BY km.updated_at DESC
+                """,
+                (owner_id,),
+            ).fetchall()
+        else:
+            rows = self._conn().execute(
+                "SELECT * FROM knowledge_memory ORDER BY updated_at DESC"
+            ).fetchall()
         result = []
         for r in rows:
             item = dict(r)
@@ -553,29 +631,51 @@ class SQLitePersistentDB:
         collective_summary: str,
         total_documents: int,
         key_insights: Optional[List[str]] = None,
+        owner_id: Optional[str] = None,
     ) -> None:
         now = time.time()
-        gid = "global"
+        gid = owner_id or "global"
         with self._tx() as conn:
-            conn.execute(
-                """
-                INSERT INTO global_knowledge_summary(
-                    id, collective_summary, total_documents, key_insights, updated_at
+            if owner_id:
+                conn.execute(
+                    """
+                    INSERT INTO global_knowledge_summary(
+                        id, owner_id, collective_summary, total_documents, key_insights, updated_at
+                    )
+                    VALUES(?,?,?,?,?,?)
+                    ON CONFLICT(owner_id) DO UPDATE SET
+                        collective_summary=excluded.collective_summary,
+                        total_documents=excluded.total_documents,
+                        key_insights=excluded.key_insights,
+                        updated_at=excluded.updated_at
+                    """,
+                    (gid, owner_id, collective_summary, total_documents, json.dumps(key_insights or []), now),
                 )
-                VALUES(?,?,?,?,?)
-                ON CONFLICT(id) DO UPDATE SET
-                    collective_summary=excluded.collective_summary,
-                    total_documents=excluded.total_documents,
-                    key_insights=excluded.key_insights,
-                    updated_at=excluded.updated_at
-                """,
-                (gid, collective_summary, total_documents, json.dumps(key_insights or []), now),
-            )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO global_knowledge_summary(
+                        id, collective_summary, total_documents, key_insights, updated_at
+                    )
+                    VALUES(?,?,?,?,?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        collective_summary=excluded.collective_summary,
+                        total_documents=excluded.total_documents,
+                        key_insights=excluded.key_insights,
+                        updated_at=excluded.updated_at
+                    """,
+                    (gid, collective_summary, total_documents, json.dumps(key_insights or []), now),
+                )
 
-    def get_global_knowledge_summary(self) -> Optional[Dict[str, Any]]:
-        row = self._conn().execute(
-            "SELECT * FROM global_knowledge_summary WHERE id='global'"
-        ).fetchone()
+    def get_global_knowledge_summary(self, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        if owner_id:
+            row = self._conn().execute(
+                "SELECT * FROM global_knowledge_summary WHERE owner_id=?", (owner_id,)
+            ).fetchone()
+        else:
+            row = self._conn().execute(
+                "SELECT * FROM global_knowledge_summary WHERE id='global'"
+            ).fetchone()
         if not row:
             return None
         res = dict(row)

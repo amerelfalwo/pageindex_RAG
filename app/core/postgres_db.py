@@ -27,9 +27,12 @@ CREATE TABLE IF NOT EXISTS chats (
     title       TEXT,
     doc_id      TEXT,
     doc_name    TEXT,
+    owner_id    TEXT,
     created_at  DOUBLE PRECISION NOT NULL,
     updated_at  DOUBLE PRECISION NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_pg_chats_owner ON chats(owner_id);
 
 CREATE TABLE IF NOT EXISTS messages (
     id          BIGSERIAL PRIMARY KEY,
@@ -54,11 +57,13 @@ CREATE TABLE IF NOT EXISTS doc_meta (
     error           TEXT,
     content_hash    TEXT,
     file_path       TEXT,
+    owner_id        TEXT,
     created_at      DOUBLE PRECISION NOT NULL,
     updated_at      DOUBLE PRECISION NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_pg_doc_meta_hash ON doc_meta(content_hash);
+CREATE INDEX IF NOT EXISTS idx_pg_doc_meta_owner ON doc_meta(owner_id);
 
 CREATE TABLE IF NOT EXISTS doc_indices (
     doc_id          TEXT PRIMARY KEY REFERENCES doc_meta(doc_id) ON DELETE CASCADE,
@@ -102,11 +107,14 @@ CREATE TABLE IF NOT EXISTS knowledge_memory (
 
 CREATE TABLE IF NOT EXISTS global_knowledge_summary (
     id                  TEXT PRIMARY KEY,
+    owner_id            TEXT,
     collective_summary  TEXT NOT NULL,
     total_documents     INTEGER DEFAULT 0,
     key_insights        JSONB,
     updated_at          DOUBLE PRECISION NOT NULL
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pg_gks_owner ON global_knowledge_summary(owner_id);
 """
 
 
@@ -172,35 +180,59 @@ class PostgresDB:
         with self._conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(_PG_DDL)
+                for tbl, idx in [
+                    ("chats", "idx_pg_chats_owner"),
+                    ("doc_meta", "idx_pg_doc_meta_owner"),
+                    ("global_knowledge_summary", "idx_pg_gks_owner"),
+                ]:
+                    cur.execute(
+                        """
+                        SELECT column_name FROM information_schema.columns 
+                        WHERE table_name = %s AND column_name = 'owner_id';
+                        """,
+                        (tbl,),
+                    )
+                    if not cur.fetchone():
+                        cur.execute(f"ALTER TABLE {tbl} ADD COLUMN owner_id TEXT;")
+                    if tbl == "global_knowledge_summary":
+                        cur.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {idx} ON {tbl}(owner_id);")
+                    else:
+                        cur.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON {tbl}(owner_id);")
         app_logger.info("[PostgresDB] Schema initialized / verified successfully.")
 
     # ── chat CRUD ───────────────────────────────────────────────────────────
-    def create_chat(self, chat_id: Optional[str] = None, title: Optional[str] = None) -> str:
+    def create_chat(self, chat_id: Optional[str] = None, title: Optional[str] = None, owner_id: Optional[str] = None) -> str:
         cid = chat_id or str(uuid.uuid4())
         now = time.time()
         with self._conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO chats(chat_id, title, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO chats(chat_id, title, owner_id, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (chat_id) DO NOTHING
                     """,
-                    (cid, title, now, now),
+                    (cid, title, owner_id, now, now),
                 )
         return cid
 
-    def get_chat(self, chat_id: str) -> Optional[Dict[str, Any]]:
+    def get_chat(self, chat_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM chats WHERE chat_id = %s", (chat_id,))
+                if owner_id:
+                    cur.execute("SELECT * FROM chats WHERE chat_id = %s AND owner_id = %s", (chat_id, owner_id))
+                else:
+                    cur.execute("SELECT * FROM chats WHERE chat_id = %s", (chat_id,))
                 row = cur.fetchone()
                 return dict(row) if row else None
 
-    def list_chats(self) -> List[Dict[str, Any]]:
+    def list_chats(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM chats ORDER BY updated_at DESC")
+                if owner_id:
+                    cur.execute("SELECT * FROM chats WHERE owner_id = %s ORDER BY updated_at DESC", (owner_id,))
+                else:
+                    cur.execute("SELECT * FROM chats ORDER BY updated_at DESC")
                 rows = cur.fetchall()
                 return [dict(r) for r in rows]
 
@@ -228,23 +260,27 @@ class PostgresDB:
                     (time.time(), chat_id),
                 )
 
-    def delete_chat(self, chat_id: str) -> None:
+    def delete_chat(self, chat_id: str, owner_id: Optional[str] = None) -> bool:
         with self._conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM chats WHERE chat_id = %s", (chat_id,))
+                if owner_id:
+                    cur.execute("DELETE FROM chats WHERE chat_id = %s AND owner_id = %s", (chat_id, owner_id))
+                else:
+                    cur.execute("DELETE FROM chats WHERE chat_id = %s", (chat_id,))
+                return cur.rowcount > 0
 
     # ── message CRUD ────────────────────────────────────────────────────────
-    def add_message(self, chat_id: str, role: str, content: str) -> None:
+    def add_message(self, chat_id: str, role: str, content: str, owner_id: Optional[str] = None) -> None:
         now = time.time()
         with self._conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO chats(chat_id, title, created_at, updated_at)
-                    VALUES (%s, 'New research', %s, %s)
+                    INSERT INTO chats(chat_id, title, owner_id, created_at, updated_at)
+                    VALUES (%s, 'New research', %s, %s, %s)
                     ON CONFLICT (chat_id) DO NOTHING
                     """,
-                    (chat_id, now, now),
+                    (chat_id, owner_id, now, now),
                 )
                 cur.execute(
                     "INSERT INTO messages(chat_id, role, content, created_at) VALUES (%s, %s, %s, %s)",
@@ -292,6 +328,7 @@ class PostgresDB:
         error: Optional[str] = None,
         content_hash: Optional[str] = None,
         file_path: Optional[str] = None,
+        owner_id: Optional[str] = None,
     ) -> None:
         now = time.time()
         with self._conn() as conn:
@@ -301,9 +338,9 @@ class PostgresDB:
                     INSERT INTO doc_meta(
                         doc_id, filename, status, page_count, section_count,
                         progress, current_stage, indexing_method, duration,
-                        error, content_hash, file_path, created_at, updated_at
+                        error, content_hash, file_path, owner_id, created_at, updated_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (doc_id) DO UPDATE SET
                         filename = EXCLUDED.filename,
                         status = EXCLUDED.status,
@@ -316,6 +353,7 @@ class PostgresDB:
                         error = EXCLUDED.error,
                         content_hash = COALESCE(EXCLUDED.content_hash, doc_meta.content_hash),
                         file_path = COALESCE(EXCLUDED.file_path, doc_meta.file_path),
+                        owner_id = COALESCE(EXCLUDED.owner_id, doc_meta.owner_id),
                         updated_at = EXCLUDED.updated_at
                     """,
                     (
@@ -331,38 +369,55 @@ class PostgresDB:
                         error,
                         content_hash,
                         file_path,
+                        owner_id,
                         now,
                         now,
                     ),
                 )
 
-    def get_doc_meta(self, doc_id: str) -> Optional[Dict[str, Any]]:
+    def get_doc_meta(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM doc_meta WHERE doc_id = %s", (doc_id,))
+                if owner_id:
+                    cur.execute("SELECT * FROM doc_meta WHERE doc_id = %s AND owner_id = %s", (doc_id, owner_id))
+                else:
+                    cur.execute("SELECT * FROM doc_meta WHERE doc_id = %s", (doc_id,))
                 row = cur.fetchone()
                 return dict(row) if row else None
 
-    def list_docs(self) -> List[Dict[str, Any]]:
+    def list_docs(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM doc_meta ORDER BY created_at DESC")
+                if owner_id:
+                    cur.execute("SELECT * FROM doc_meta WHERE owner_id = %s ORDER BY created_at DESC", (owner_id,))
+                else:
+                    cur.execute("SELECT * FROM doc_meta ORDER BY created_at DESC")
                 rows = cur.fetchall()
                 return [dict(r) for r in rows]
 
-    def find_doc_by_hash(self, content_hash: str) -> Optional[Dict[str, Any]]:
+    def find_doc_by_hash(self, content_hash: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(
-                    "SELECT * FROM doc_meta WHERE content_hash = %s ORDER BY updated_at DESC LIMIT 1",
-                    (content_hash,),
-                )
+                if owner_id:
+                    cur.execute(
+                        "SELECT * FROM doc_meta WHERE content_hash = %s AND owner_id = %s ORDER BY updated_at DESC LIMIT 1",
+                        (content_hash, owner_id),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT * FROM doc_meta WHERE content_hash = %s ORDER BY updated_at DESC LIMIT 1",
+                        (content_hash,),
+                    )
                 row = cur.fetchone()
                 return dict(row) if row else None
 
-    def delete_doc(self, doc_id: str) -> bool:
+    def delete_doc(self, doc_id: str, owner_id: Optional[str] = None) -> bool:
         with self._conn() as conn:
             with conn.cursor() as cur:
+                if owner_id:
+                    cur.execute("SELECT doc_id FROM doc_meta WHERE doc_id = %s AND owner_id = %s", (doc_id, owner_id))
+                    if not cur.fetchone():
+                        return False
                 cur.execute("DELETE FROM doc_meta WHERE doc_id = %s", (doc_id,))
                 rc = cur.rowcount
                 cur.execute("UPDATE chats SET doc_id = NULL, doc_name = NULL WHERE doc_id = %s", (doc_id,))
@@ -474,9 +529,13 @@ class PostgresDB:
                         (now, chat_id),
                     )
 
-    def get_chat_documents(self, chat_id: str) -> List[Dict[str, Any]]:
+    def get_chat_documents(self, chat_id: str, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                if owner_id:
+                    cur.execute("SELECT chat_id FROM chats WHERE chat_id = %s AND owner_id = %s", (chat_id, owner_id))
+                    if not cur.fetchone():
+                        return []
                 cur.execute(
                     """
                     SELECT cd.chat_id, cd.doc_id, cd.doc_name, cd.attached_at,
@@ -563,10 +622,20 @@ class PostgresDB:
                     ),
                 )
 
-    def get_knowledge_dossier(self, doc_id: str) -> Optional[Dict[str, Any]]:
+    def get_knowledge_dossier(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM knowledge_memory WHERE doc_id = %s", (doc_id,))
+                if owner_id:
+                    cur.execute(
+                        """
+                        SELECT km.* FROM knowledge_memory km
+                        JOIN doc_meta dm ON km.doc_id = dm.doc_id
+                        WHERE km.doc_id = %s AND dm.owner_id = %s
+                        """,
+                        (doc_id, owner_id),
+                    )
+                else:
+                    cur.execute("SELECT * FROM knowledge_memory WHERE doc_id = %s", (doc_id,))
                 row = cur.fetchone()
                 if not row:
                     return None
@@ -576,10 +645,21 @@ class PostgresDB:
                         res[k] = []
                 return res
 
-    def list_knowledge_dossiers(self) -> List[Dict[str, Any]]:
+    def list_knowledge_dossiers(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM knowledge_memory ORDER BY updated_at DESC")
+                if owner_id:
+                    cur.execute(
+                        """
+                        SELECT km.* FROM knowledge_memory km
+                        JOIN doc_meta dm ON km.doc_id = dm.doc_id
+                        WHERE dm.owner_id = %s
+                        ORDER BY km.updated_at DESC
+                        """,
+                        (owner_id,),
+                    )
+                else:
+                    cur.execute("SELECT * FROM knowledge_memory ORDER BY updated_at DESC")
                 rows = cur.fetchall()
                 result = []
                 for r in rows:
@@ -600,36 +680,63 @@ class PostgresDB:
         collective_summary: str,
         total_documents: int,
         key_insights: Optional[List[str]] = None,
+        owner_id: Optional[str] = None,
     ) -> None:
         now = time.time()
-        gid = "global"
+        gid = owner_id or "global"
         with self._conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO global_knowledge_summary(
-                        id, collective_summary, total_documents, key_insights, updated_at
+                if owner_id:
+                    cur.execute(
+                        """
+                        INSERT INTO global_knowledge_summary(
+                            id, owner_id, collective_summary, total_documents, key_insights, updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (owner_id) DO UPDATE SET
+                            collective_summary = EXCLUDED.collective_summary,
+                            total_documents = EXCLUDED.total_documents,
+                            key_insights = EXCLUDED.key_insights,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        (
+                            gid,
+                            owner_id,
+                            collective_summary,
+                            total_documents,
+                            psycopg2.extras.Json(key_insights or []),
+                            now,
+                        ),
                     )
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO UPDATE SET
-                        collective_summary = EXCLUDED.collective_summary,
-                        total_documents = EXCLUDED.total_documents,
-                        key_insights = EXCLUDED.key_insights,
-                        updated_at = EXCLUDED.updated_at
-                    """,
-                    (
-                        gid,
-                        collective_summary,
-                        total_documents,
-                        psycopg2.extras.Json(key_insights or []),
-                        now,
-                    ),
-                )
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO global_knowledge_summary(
+                            id, collective_summary, total_documents, key_insights, updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (id) DO UPDATE SET
+                            collective_summary = EXCLUDED.collective_summary,
+                            total_documents = EXCLUDED.total_documents,
+                            key_insights = EXCLUDED.key_insights,
+                            updated_at = EXCLUDED.updated_at
+                        """,
+                        (
+                            gid,
+                            collective_summary,
+                            total_documents,
+                            psycopg2.extras.Json(key_insights or []),
+                            now,
+                        ),
+                    )
 
-    def get_global_knowledge_summary(self) -> Optional[Dict[str, Any]]:
+    def get_global_knowledge_summary(self, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT * FROM global_knowledge_summary WHERE id = 'global'")
+                if owner_id:
+                    cur.execute("SELECT * FROM global_knowledge_summary WHERE owner_id = %s", (owner_id,))
+                else:
+                    cur.execute("SELECT * FROM global_knowledge_summary WHERE id = 'global'")
                 row = cur.fetchone()
                 if not row:
                     return None

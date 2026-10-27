@@ -8,7 +8,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, R
 from services.document_service import DocumentService
 from services.llm_service import LLMService
 from core.storage import MemoryStorage
-from core.dependencies import get_document_service, get_llm_service, get_storage
+from core.dependencies import get_document_service, get_llm_service, get_storage, get_client_id
 from schemas.schemas import UploadResponse, DocumentStatusResponse
 from utils.logger import app_logger
 from core.persistent_db import DATA_DIR
@@ -27,6 +27,7 @@ async def run_background_indexing(
     doc_service: DocumentService,
     llm_service: LLMService,
     storage: MemoryStorage,
+    owner_id: Optional[str] = None,
 ):
     """Background task for long-running PDF parsing, PageIndex polling, and fallback extraction."""
     t_start = time.monotonic()
@@ -96,6 +97,7 @@ async def run_background_indexing(
                     filename=filename,
                     tree=tree,
                     flat_sections=flat_sections,
+                    owner_id=owner_id,
                 )
             )
         except Exception as mex:
@@ -126,6 +128,7 @@ async def upload_pdf(
     doc_service: DocumentService = Depends(get_document_service),
     llm_service: LLMService = Depends(get_llm_service),
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """
     Asynchronous PDF upload and indexing endpoint.
@@ -147,14 +150,14 @@ async def upload_pdf(
 
     content_hash = hashlib.sha256(contents).hexdigest()
 
-    # Deduplication check: Check if same document is already ready or currently indexing
-    existing_doc = storage.get_doc_by_hash(content_hash)
+    # Deduplication check: Check if same document is already ready or currently indexing for this owner
+    existing_doc = storage.get_doc_by_hash(content_hash, owner_id=client_id)
     if existing_doc:
         doc_id = existing_doc["doc_id"]
         doc_status = existing_doc.get("status")
 
         if chat_id:
-            storage.set_chat_doc(chat_id, doc_id)
+            storage.set_chat_doc(chat_id, doc_id, owner_id=client_id)
 
         if doc_status == "ready":
             app_logger.info(
@@ -194,10 +197,10 @@ async def upload_pdf(
 
     app_logger.info(
         f"[INDEX] document_id={doc_id} stage=upload filename='{file.filename}' "
-        f"size={len(contents)} hash={content_hash[:12]}"
+        f"size={len(contents)} hash={content_hash[:12]} owner={client_id}"
     )
 
-    # Register document in storage
+    # Register document in storage with owner_id
     storage.create_document(
         doc_id=doc_id,
         filename=file.filename,
@@ -206,10 +209,11 @@ async def upload_pdf(
         file_path=file_path,
         current_stage="Processing PDF",
         progress=10,
+        owner_id=client_id,
     )
 
     if chat_id:
-        storage.set_chat_doc(chat_id, doc_id)
+        storage.set_chat_doc(chat_id, doc_id, owner_id=client_id)
         app_logger.info(f"Associated document {doc_id} ('{file.filename}') with chat {chat_id}")
 
     # Launch detached asynchronous background task
@@ -222,6 +226,7 @@ async def upload_pdf(
             doc_service=doc_service,
             llm_service=llm_service,
             storage=storage,
+            owner_id=client_id,
         )
     )
     storage.register_active_task(doc_id, task)
@@ -241,9 +246,10 @@ async def upload_pdf(
 async def get_document_status(
     document_id: str,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Retrieve indexing/ready/failed status and operational metadata for a document."""
-    doc = storage.get_document(document_id)
+    doc = storage.get_document(document_id, owner_id=client_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document ID not found.")
 
@@ -279,9 +285,10 @@ async def retry_document_indexing(
     doc_service: DocumentService = Depends(get_document_service),
     llm_service: LLMService = Depends(get_llm_service),
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Explicitly retry indexing for a failed document."""
-    doc = storage.get_document(document_id)
+    doc = storage.get_document(document_id, owner_id=client_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document ID not found.")
 
@@ -319,6 +326,7 @@ async def retry_document_indexing(
             doc_service=doc_service,
             llm_service=llm_service,
             storage=storage,
+            owner_id=client_id,
         )
     )
     storage.register_active_task(document_id, task)
@@ -334,9 +342,12 @@ async def retry_document_indexing(
 
 
 @router.get("/documents")
-async def list_documents(storage: MemoryStorage = Depends(get_storage)):
-    """List all ingested documents with status and metadata."""
-    docs = storage.list_documents()
+async def list_documents(
+    storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
+):
+    """List all ingested documents with status and metadata for current client."""
+    docs = storage.list_documents(owner_id=client_id)
     return {"documents": docs}
 
 
@@ -344,9 +355,10 @@ async def list_documents(storage: MemoryStorage = Depends(get_storage)):
 async def get_document_details(
     document_id: str,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Retrieve details and operational metadata for a specific document."""
-    doc = storage.get_document(document_id)
+    doc = storage.get_document(document_id, owner_id=client_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document ID not found.")
     return {
@@ -371,13 +383,14 @@ async def get_document_tree(
     storage: MemoryStorage = Depends(get_storage),
     doc_service: DocumentService = Depends(get_document_service),
     llm_service: LLMService = Depends(get_llm_service),
+    client_id: str = Depends(get_client_id),
 ):
     """Retrieve the hierarchical section tree for a document."""
-    doc = storage.get_document(document_id)
+    doc = storage.get_document(document_id, owner_id=client_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document ID not found.")
 
-    tree = storage.get_document_tree(document_id)
+    tree = storage.get_document_tree(document_id, owner_id=client_id)
     if tree is None and doc.get("file_path") and os.path.exists(doc["file_path"]):
         # Reconstruct tree using local parser and cache
         tree = doc_service._local_pdf_parse(doc["file_path"])
@@ -390,6 +403,7 @@ async def get_document_tree(
             indexing_method=doc.get("indexing_method") or "pymupdf",
             filename=doc.get("filename"),
             file_path=doc.get("file_path"),
+            owner_id=client_id,
         )
 
     if tree is None:
@@ -405,14 +419,14 @@ async def get_document_tree(
     }
 
 
-
 @router.delete("/documents/{document_id}")
 async def delete_document(
     document_id: str,
     storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
 ):
     """Permanently delete a document, its cached index, and local file."""
-    doc = storage.get_document(document_id)
+    doc = storage.get_document(document_id, owner_id=client_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document ID not found.")
 
@@ -423,7 +437,7 @@ async def delete_document(
         except Exception as e:
             app_logger.warning(f"Could not remove document file {file_path}: {e}")
 
-    storage.delete_document(document_id)
+    storage.delete_document(document_id, owner_id=client_id)
     app_logger.info(f"Deleted document {document_id}")
     return {"message": "Document deleted successfully", "doc_id": document_id}
 

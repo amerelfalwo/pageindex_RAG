@@ -22,14 +22,14 @@ class MemoryService:
 
     # ── 1. Short-Term & Long-Term Session Memory ────────────────────────────
     def get_session_context(
-        self, chat_id: str, max_recent_turns: int = 6
+        self, chat_id: str, max_recent_turns: int = 6, owner_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Retrieves strictly isolated session memory:
         - Recent turns (short-term memory window)
         - Rolling session summary (long-term memory)
         """
-        full_history = storage.get_chat_history(chat_id) or []
+        full_history = storage.get_chat_history(chat_id, owner_id=owner_id) or []
         summary_record = storage.get_chat_summary(chat_id)
         session_summary = summary_record.get("summary") if summary_record else None
 
@@ -42,27 +42,34 @@ class MemoryService:
             "total_messages": len(full_history),
         }
 
-    async def update_session_summary_if_needed(self, chat_id: str) -> None:
-        """Trigger rolling summarization if conversation length exceeds threshold."""
+    async def update_session_summary_if_needed(
+        self, chat_id: str, owner_id: Optional[str] = None, force: bool = False
+    ) -> Optional[str]:
+        """Trigger rolling summarization if conversation length exceeds threshold or if force=True."""
         try:
-            full_history = storage.get_chat_history(chat_id) or []
-            if len(full_history) < 8:
-                return
+            full_history = storage.get_chat_history(chat_id, owner_id=owner_id) or []
+            if not full_history:
+                return None
+            if not force and len(full_history) < 8:
+                return None
 
             last_summary = storage.get_chat_summary(chat_id)
             last_count = last_summary.get("turn_count", 0) if last_summary else 0
 
-            # Only re-summarize if at least 4 new messages occurred
-            if (len(full_history) - last_count) < 4:
-                return
+            # Only re-summarize if force=True or at least 4 new messages occurred
+            if not force and (len(full_history) - last_count) < 4:
+                return last_summary.get("summary") if last_summary else None
 
             app_logger.info(f"[MEMORY] Updating rolling summary for chat_id={chat_id}")
             summary = await self.llm.summarize_conversation(full_history)
             if summary:
                 storage.set_chat_summary(chat_id, summary, turn_count=len(full_history))
                 app_logger.info(f"[MEMORY] Successfully updated summary for chat_id={chat_id}")
+                return summary
+            return None
         except Exception as e:
             app_logger.error(f"[MEMORY] Error updating session summary: {e}")
+            return None
 
     # ── 2. Document Knowledge Dossier ──────────────────────────────────────
     async def generate_document_dossier(
@@ -166,28 +173,28 @@ Return ONLY valid JSON matching this schema:
             }
         except Exception as e:
             app_logger.error(f"[MEMORY] Failed to generate document dossier for {doc_id}: {e}", exc_info=True)
-    def get_document_dossier(self, doc_id: str) -> Optional[Dict[str, Any]]:
+    def get_document_dossier(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Retrieve structured knowledge dossier for an individual document."""
-        return storage.get_knowledge_dossier(doc_id)
+        return storage.get_knowledge_dossier(doc_id, owner_id=owner_id)
 
-    def list_knowledge_dossiers(self) -> List[Dict[str, Any]]:
+    def list_knowledge_dossiers(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieve all knowledge dossiers across indexed documents."""
-        return storage.list_knowledge_dossiers()
+        return storage.list_knowledge_dossiers(owner_id=owner_id)
 
     # ── 3. Global Knowledge Summary Across All Data ────────────────────────
-    async def synthesize_global_knowledge(self) -> Dict[str, Any]:
+    async def synthesize_global_knowledge(self, owner_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Synthesizes a collective master knowledge summary of all indexed documents in the workspace.
         """
-        dossiers = storage.list_knowledge_dossiers()
+        dossiers = storage.list_knowledge_dossiers(owner_id=owner_id)
         total_docs = len(dossiers)
 
         if not dossiers:
             # Check if any documents exist in doc_meta without dossiers yet
-            all_docs = storage.list_documents()
+            all_docs = storage.list_documents(owner_id=owner_id)
             if not all_docs:
                 default_summary = "No documents currently indexed in the knowledge base."
-                storage.save_global_knowledge_summary(default_summary, 0, [])
+                storage.save_global_knowledge_summary(default_summary, 0, [], owner_id=owner_id)
                 return {"collective_summary": default_summary, "total_documents": 0, "key_insights": []}
 
         # Build combined summary representation of all dossiers
@@ -252,7 +259,7 @@ Return ONLY valid JSON with this exact schema:
         collective = data.get("collective_summary") or "Atlas Global Knowledge Base synthesis complete."
         insights = data.get("key_insights") or []
 
-        storage.save_global_knowledge_summary(collective, total_docs, insights)
+        storage.save_global_knowledge_summary(collective, total_docs, insights, owner_id=owner_id)
         app_logger.info(f"[MEMORY] Successfully synthesized global knowledge across {total_docs} documents.")
 
         return {
@@ -262,10 +269,10 @@ Return ONLY valid JSON with this exact schema:
             "updated_at": time.time(),
         }
 
-    def get_global_knowledge(self) -> Dict[str, Any]:
+    def get_global_knowledge(self, owner_id: Optional[str] = None) -> Dict[str, Any]:
         """Fetch current global knowledge summary and document dossiers."""
-        global_rec = storage.get_global_knowledge_summary() or {}
-        dossiers = storage.list_knowledge_dossiers()
+        global_rec = storage.get_global_knowledge_summary(owner_id=owner_id) or {}
+        dossiers = storage.list_knowledge_dossiers(owner_id=owner_id)
         return {
             "collective_summary": global_rec.get(
                 "collective_summary", "No collective summary available yet. Ingest documents to build knowledge."

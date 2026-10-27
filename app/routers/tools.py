@@ -9,9 +9,10 @@ Exposes direct REST endpoints for MCP tools:
 """
 
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
+from core.dependencies import get_client_id
 from mcp_server.web_search_mcp import execute_web_search
 from mcp_server.research_tools import (
     fetch_webpage_markdown,
@@ -20,7 +21,7 @@ from mcp_server.research_tools import (
     evaluate_math_expression_safe,
 )
 
-router = APIRouter(prefix="/tools", tags=["Tools & MCP"])
+router = APIRouter(prefix="/tools", tags=["Tools & MCP"], dependencies=[Depends(get_client_id)])
 
 
 class WebSearchRequest(BaseModel):
