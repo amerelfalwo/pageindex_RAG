@@ -18,7 +18,11 @@ def get_llm_service() -> LLMService:
 
 @lru_cache()
 def get_rag_pipeline() -> VectorlessRAG:
-    return VectorlessRAG(get_llm_service())
+    return VectorlessRAG(
+        get_llm_service(),
+        memory_service=get_memory_service(),
+        storage_instance=get_storage(),
+    )
 
 
 def get_storage() -> MemoryStorage:

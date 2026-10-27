@@ -709,7 +709,7 @@ If there is insufficient evidence:
             context_msg = "No relevant sections found in the document for this question."
         else:
             max_node_chars = 4500 if deep_analysis else 2500
-            max_total_chars = 12000 if deep_analysis else 6000
+            max_total_chars = 16000 if deep_analysis else 9000
             context_parts = []
             current_total_chars = 0
             for node in nodes:
@@ -744,7 +744,18 @@ If there is insufficient evidence:
 
         global_knowledge_str = ""
         if global_knowledge:
-            global_knowledge_str = f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nGLOBAL KNOWLEDGE MEMORY (All workspace documents)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{global_knowledge}\n\n"
+            if isinstance(global_knowledge, dict):
+                coll = global_knowledge.get("collective_summary", "")
+                insights = global_knowledge.get("key_insights", [])
+                insights_str = "\n".join([f"- {ins}" for ins in insights]) if insights else ""
+                global_knowledge_str = (
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"GLOBAL KNOWLEDGE MEMORY (All workspace documents)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"{coll}\n\nKey Insights:\n{insights_str}\n\n"
+                )
+            else:
+                global_knowledge_str = f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nGLOBAL KNOWLEDGE MEMORY (All workspace documents)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{global_knowledge}\n\n"
 
         web_evidence_str = ""
         if web_results:
@@ -954,6 +965,10 @@ CITATION & SOURCING RULES
      When citing a specific fact, definition, number, methodology, or claim, YOU MUST cite the EXACT page number indicated by the nearest preceding `--- [PAGE X] ---` marker where that specific statement appears, rather than defaulting to the section's starting page.
      Place citations immediately after the relevant claim or paragraph:
      (Section: "Section Title", Page: X)
+   - GLOBAL & EXECUTIVE DOSSIER CITATION DIRECTIVE:
+     When citing or synthesizing overarching themes, executive summaries, or core findings from the Executive Knowledge Dossier or top-level chapter summaries, cite them explicitly:
+     e.g., (Section: "Executive Knowledge Dossier & Core Findings", Page: 1) or (Section: "Chapter Title", Page: X).
+     Preserve proper citations from both top-level tree chapters and specific sub-nodes.
    - Fallback: If no `--- [PAGE X] ---` marker is found inside the text (e.g., legacy indexed documents), fallback gracefully to the section's base page number from the section header: [Page Y].
    - Never invent a page number. If page is unavailable or "?", cite section title only:
      (Section: "Section Title")
