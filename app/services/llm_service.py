@@ -1414,7 +1414,17 @@ ACADEMIC CITATION RULES:
             system_prompt += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nSESSION LONG-TERM MEMORY (Summary of earlier turns)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{session_summary}\n"
 
         if global_knowledge:
-            system_prompt += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nGLOBAL KNOWLEDGE MEMORY (All workspace documents)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{global_knowledge}\nYou can answer questions about the collective documents in the workspace using the Global Knowledge Memory above.\n"
+            system_prompt += f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LIBRARY DOCUMENTS OVERVIEW (Stored in Workspace)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{global_knowledge}
+CRITICAL BEHAVIOR:
+- No document is currently attached to this chat session. The user is having a general conversation.
+- You must speak COMPLETELY NORMALLY as a general AI assistant (answering general questions, coding, math, chatting, etc.).
+- Do NOT arbitrarily pick one of the stored documents to answer from, and do NOT pretend the user asked about a specific document!
+- Only reference the stored documents above if the user explicitly asks about their stored files, mentions one of the document names, or asks what is available in the library.
+"""
 
         if chat_history_text:
             system_prompt += f"\n[Recent conversation]\n{chat_history_text}\n"

@@ -174,6 +174,20 @@ async def ask_question(
     # Deduplicate while preserving order
     target_doc_ids = list(dict.fromkeys(target_doc_ids))
 
+    # If no document is currently attached to this chat, check if the user explicitly mentioned a stored document
+    if not target_doc_ids:
+        all_stored_docs = storage.list_docs(owner_id=client_id)
+        q_lower = request.query.lower()
+        for doc in all_stored_docs:
+            fname = (doc.get("filename") or "").lower()
+            fname_no_ext = fname.replace(".pdf", "").strip()
+            # Match either exact filename (e.g. "2610.18537v1.pdf") or clean stem if >= 4 chars
+            if (fname and len(fname) > 3 and fname in q_lower) or (fname_no_ext and len(fname_no_ext) >= 4 and fname_no_ext in q_lower):
+                target_doc_ids.append(doc["doc_id"])
+                storage.add_chat_doc(request.chat_id, doc["doc_id"], owner_id=client_id)
+                app_logger.info(f"[AUTO-ATTACH] Mentioned document '{doc.get('filename')}' auto-attached to chat {request.chat_id}")
+                break
+
     # 2. Inspect document states
     ready_docs = []
     indexing_docs = []
