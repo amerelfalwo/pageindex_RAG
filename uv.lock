@@ -1754,17 +1754,20 @@ name = "pageindex-rag"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "beautifulsoup4" },
     { name = "ddgs" },
     { name = "duckduckgo-search" },
     { name = "edge-tts" },
     { name = "fastapi" },
     { name = "fastmcp" },
+    { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "mcp" },
     { name = "openai" },
     { name = "pageindex" },
     { name = "psycopg2-binary" },
+    { name = "pydantic" },
     { name = "pymupdf" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
@@ -1780,17 +1783,20 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.14.5" },
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
     { name = "ddgs", specifier = ">=9.16.0" },
     { name = "duckduckgo-search", specifier = ">=8.1.1" },
     { name = "edge-tts", specifier = ">=7.3.1" },
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "fastmcp", specifier = ">=4.1.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", specifier = ">=2.1.1" },
     { name = "mcp", specifier = ">=2.3.0" },
     { name = "openai", specifier = ">=2.36.0" },
     { name = "pageindex", specifier = ">=0.2.8" },
     { name = "psycopg2-binary", specifier = ">=2.9.13" },
+    { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pymupdf", specifier = ">=1.27.2.3" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "python-multipart", specifier = ">=0.0.28" },

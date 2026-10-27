@@ -30,7 +30,8 @@ async def run_tests():
     results = {}
     transport = httpx.ASGITransport(app=app)
 
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    TEST_CLIENT_ID = "00000000-0000-4000-8000-000000000001"
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers={"X-Client-ID": TEST_CLIENT_ID}) as client:
         print("\n=======================================================")
         print("STARTING PRODUCTION ASYNC INDEXING TEST SUITE")
         print("=======================================================\n")
@@ -166,7 +167,7 @@ async def run_tests():
         # Scenario G: Retry While Indexing
         # ─────────────────────────────────────────────────────────────────
         print("\n--- [TEST G] Retry While Indexing ---")
-        indexing_doc_id = storage.create_document(filename="test_active.pdf", status="indexing")
+        indexing_doc_id = storage.create_document(filename="test_active.pdf", status="indexing", owner_id=TEST_CLIENT_ID)
         storage.update_document_progress(indexing_doc_id, status="indexing", current_stage="Building document structure", progress=40)
         
         res_retry_active = await client.post(f"/documents/{indexing_doc_id}/retry")
@@ -183,6 +184,7 @@ async def run_tests():
             filename="test_failed.pdf",
             status="failed",
             file_path=temp_pdf_path,
+            owner_id=TEST_CLIENT_ID,
         )
         storage.set_document_error(failed_doc_id, "Simulated network timeout")
         

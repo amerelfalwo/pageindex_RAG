@@ -306,11 +306,14 @@ class MemoryStorage:
         duration: Optional[float] = None,
         filename: Optional[str] = None,
         file_path: Optional[str] = None,
+        owner_id: Optional[str] = None,
     ) -> None:
         if doc_id not in self._documents:
-            self.create_document(doc_id=doc_id, filename=filename or "document.pdf", status="ready")
+            self.create_document(doc_id=doc_id, filename=filename or "document.pdf", status="ready", owner_id=owner_id)
 
         doc = self._documents[doc_id]
+        if owner_id and not doc.get("owner_id"):
+            doc["owner_id"] = owner_id
         doc["status"] = "ready"
         doc["progress"] = 100
         doc["current_stage"] = "Ready"
@@ -384,6 +387,7 @@ class MemoryStorage:
             error=None,
             content_hash=doc.get("content_hash"),
             file_path=file_path or doc.get("file_path"),
+            owner_id=doc.get("owner_id"),
         )
 
     def set_document_error(

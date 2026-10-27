@@ -73,7 +73,7 @@ class MemoryService:
 
     # ── 2. Document Knowledge Dossier ──────────────────────────────────────
     async def generate_document_dossier(
-        self, doc_id: str, filename: str, tree: list, flat_sections: Optional[list] = None
+        self, doc_id: str, filename: str, tree: list, flat_sections: Optional[list] = None, owner_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Analyzes a newly indexed document to generate an executive dossier:
@@ -157,11 +157,12 @@ Return ONLY valid JSON matching this schema:
                 key_entities=entities,
                 key_findings=findings,
                 topics=topics,
+                owner_id=owner_id,
             )
             app_logger.info(f"[MEMORY] Saved knowledge dossier for doc_id={doc_id} ({filename})")
 
             # Asynchronously update global knowledge summary
-            await self.synthesize_global_knowledge()
+            await self.synthesize_global_knowledge(owner_id=owner_id)
 
             return {
                 "doc_id": doc_id,

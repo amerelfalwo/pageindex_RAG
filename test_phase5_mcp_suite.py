@@ -26,7 +26,7 @@ from mcp_server.research_tools import (
     atlas_get_knowledge_dossier_impl,
 )
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-Client-ID": "00000000-0000-4000-8000-000000000001"})
 
 
 def test_deep_web_reader():

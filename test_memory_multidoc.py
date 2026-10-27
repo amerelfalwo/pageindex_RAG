@@ -11,7 +11,8 @@ from app import app
 from core.storage import storage
 from core.persistent_db import persistent_db
 
-client = TestClient(app)
+TEST_CLIENT_ID = "00000000-0000-4000-8000-000000000001"
+client = TestClient(app, headers={"X-Client-ID": TEST_CLIENT_ID})
 
 def test_full_memory_and_multidoc_isolation():
     print("\n--- 1. Testing Session Creation & Isolation ---")
@@ -38,8 +39,8 @@ def test_full_memory_and_multidoc_isolation():
         {"title": "Overview: Financials", "page": 1, "text": "Revenue grew by 24% in Q3."},
     ]
 
-    storage.set_document_ready(doc1_id, tree=mock_tree_1, filename="Architecture_Guide.pdf", page_count=2, section_count=2)
-    storage.set_document_ready(doc2_id, tree=mock_tree_2, filename="Financial_Report_Q3.pdf", page_count=1, section_count=1)
+    storage.set_document_ready(doc1_id, tree=mock_tree_1, filename="Architecture_Guide.pdf", page_count=2, section_count=2, owner_id=TEST_CLIENT_ID)
+    storage.set_document_ready(doc2_id, tree=mock_tree_2, filename="Financial_Report_Q3.pdf", page_count=1, section_count=1, owner_id=TEST_CLIENT_ID)
 
     print("\n--- 2. Testing Multi-Document Attachment to Chat A ---")
     attach_res = client.post(f"/chat/{chat_a}/attach-multiple", json={"doc_ids": [doc1_id, doc2_id]})
@@ -99,13 +100,15 @@ def test_full_memory_and_multidoc_isolation():
         executive_summary="Explains Atlas tree-based vectorless RAG architecture.",
         key_entities=["Atlas", "PageIndex", "Groq", "FastAPI"],
         key_findings=["Tree search outperforms embeddings on dense tabular texts."],
-        topics=["Architecture", "Document Intelligence", "FastAPI"]
+        topics=["Architecture", "Document Intelligence", "FastAPI"],
+        owner_id=TEST_CLIENT_ID,
     )
 
     persistent_db.save_global_knowledge_summary(
         collective_summary="Atlas workspace contains technical documentation on tree retrieval and quarterly financial reports.",
         total_documents=2,
-        key_insights=["Tree retrieval avoids embedding drift", "Multi-doc synthesis enables cross-sectional queries"]
+        key_insights=["Tree retrieval avoids embedding drift", "Multi-doc synthesis enables cross-sectional queries"],
+        owner_id=TEST_CLIENT_ID,
     )
 
     g_res = client.get("/memory/knowledge")

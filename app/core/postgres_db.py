@@ -593,6 +593,7 @@ class PostgresDB:
         key_entities: Optional[List[str]] = None,
         key_findings: Optional[List[str]] = None,
         topics: Optional[List[str]] = None,
+        owner_id: Optional[str] = None,
     ) -> None:
         now = time.time()
         with self._conn() as conn:

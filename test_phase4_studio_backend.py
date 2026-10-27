@@ -17,6 +17,9 @@ def test_studio_mindmap_and_quiz_endpoints():
     
     # 1. Create a test document in storage
     doc_id = "test-studio-doc-123"
+    client_id = "00000000-0000-4000-8000-000000000001"
+    headers = {"X-Client-ID": client_id}
+
     tree = [
         {
             "node_id": "ch_1",
@@ -48,6 +51,12 @@ def test_studio_mindmap_and_quiz_endpoints():
         }
     ]
 
+    storage.create_document(
+        doc_id=doc_id,
+        filename="Atlas_Architecture.pdf",
+        status="ready",
+        owner_id=client_id,
+    )
     storage.set_document_ready(
         doc_id=doc_id,
         tree=tree,
@@ -63,12 +72,13 @@ def test_studio_mindmap_and_quiz_endpoints():
         executive_summary="Atlas is an enterprise vectorless RAG platform with hierarchical tree search.",
         key_entities=["Atlas", "PageIndex", "Groq", "FastAPI"],
         key_findings=["Tree search outperforms embeddings on dense technical documents.", "Sub-node pruning preserves exact page citations."],
-        topics=["Vectorless Architecture", "Hierarchical Traversal", "Lexical BM25"]
+        topics=["Vectorless Architecture", "Hierarchical Traversal", "Lexical BM25"],
+        owner_id=client_id,
     )
 
     # 2. Test GET /studio/{doc_id}/mindmap
     print("\n[TEST 1] Testing GET /studio/{doc_id}/mindmap...")
-    res = client.get(f"/studio/{doc_id}/mindmap")
+    res = client.get(f"/studio/{doc_id}/mindmap", headers=headers)
     assert res.status_code == 200, f"Expected 200, got {res.status_code}: {res.text}"
     data = res.json()
 
@@ -112,7 +122,7 @@ def test_studio_mindmap_and_quiz_endpoints():
 
     # 3. Test POST /studio/{doc_id}/quiz
     print("\n[TEST 2] Testing POST /studio/{doc_id}/quiz...")
-    quiz_res = client.post(f"/studio/{doc_id}/quiz", json={"num_mcqs": 5, "num_flashcards": 5})
+    quiz_res = client.post(f"/studio/{doc_id}/quiz", headers=headers, json={"num_mcqs": 5, "num_flashcards": 5})
     assert quiz_res.status_code == 200, f"Expected 200, got {quiz_res.status_code}: {quiz_res.text}"
     quiz_data = quiz_res.json()
 
@@ -148,9 +158,9 @@ def test_studio_mindmap_and_quiz_endpoints():
 
     # 4. Test 404 for unknown document
     print("\n[TEST 3] Testing 404 error handling for non-existent doc...")
-    err_res = client.get("/studio/non-existent-doc-999/mindmap")
+    err_res = client.get("/studio/non-existent-doc-999/mindmap", headers=headers)
     assert err_res.status_code == 404
-    err_res2 = client.post("/studio/non-existent-doc-999/quiz")
+    err_res2 = client.post("/studio/non-existent-doc-999/quiz", headers=headers)
     assert err_res2.status_code == 404
     print("✓ Test 3 Passed: 404 error handling verified!")
 
