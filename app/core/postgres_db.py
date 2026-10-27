@@ -33,8 +33,6 @@ CREATE TABLE IF NOT EXISTS chats (
     updated_at  DOUBLE PRECISION NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_pg_chats_owner ON chats(owner_id);
-
 CREATE TABLE IF NOT EXISTS messages (
     id          BIGSERIAL PRIMARY KEY,
     chat_id     TEXT NOT NULL REFERENCES chats(chat_id) ON DELETE CASCADE,
@@ -64,7 +62,6 @@ CREATE TABLE IF NOT EXISTS doc_meta (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pg_doc_meta_hash ON doc_meta(content_hash);
-CREATE INDEX IF NOT EXISTS idx_pg_doc_meta_owner ON doc_meta(owner_id);
 
 CREATE TABLE IF NOT EXISTS doc_indices (
     doc_id          TEXT PRIMARY KEY REFERENCES doc_meta(doc_id) ON DELETE CASCADE,
@@ -114,8 +111,6 @@ CREATE TABLE IF NOT EXISTS global_knowledge_summary (
     key_insights        JSONB,
     updated_at          DOUBLE PRECISION NOT NULL
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pg_gks_owner ON global_knowledge_summary(owner_id);
 """
 
 
