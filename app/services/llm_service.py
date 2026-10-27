@@ -3,6 +3,7 @@ import re
 import time
 import json
 import uuid
+import asyncio
 from typing import Optional, List, Dict, Any, Tuple
 from dotenv import load_dotenv
 from huggingface_hub import AsyncInferenceClient
@@ -31,7 +32,17 @@ class LLMService:
         )
         self.summary_model = os.getenv("HF_SUMMARY_MODEL", self.retrieval_model)
 
-        self.client = AsyncInferenceClient(token=self.token)
+        try:
+            self.timeout_seconds = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
+        except ValueError:
+            self.timeout_seconds = 60.0
+
+        try:
+            self.stream_first_token_timeout = float(os.getenv("LLM_STREAM_FIRST_TOKEN_TIMEOUT", "30"))
+        except ValueError:
+            self.stream_first_token_timeout = 30.0
+
+        self.client = AsyncInferenceClient(token=self.token, timeout=self.timeout_seconds)
         self.hf_exhausted = False
 
         # Groq Fallback Client (used when Hugging Face tokens/credits are depleted)
@@ -44,17 +55,28 @@ class LLMService:
             self.groq_client = AsyncOpenAI(
                 api_key=self.groq_api_key,
                 base_url="https://api.groq.com/openai/v1",
+                timeout=self.timeout_seconds,
             )
             app_logger.info(
-                f"Initialized Groq Fallback Client | Chat: {self.groq_chat_model} | Retrieval: {self.groq_retrieval_model}"
+                f"Initialized Groq Fallback Client | Chat: {self.groq_chat_model} | "
+                f"Retrieval: {self.groq_retrieval_model} | Timeout: {self.timeout_seconds}s"
             )
 
         app_logger.info(
-            f"Initialized LLMService via Hugging Face | Retrieval: {self.retrieval_model} | Chat: {self.chat_model}"
+            f"Initialized LLMService via Hugging Face | Retrieval: {self.retrieval_model} | "
+            f"Chat: {self.chat_model} | Timeout: {self.timeout_seconds}s (stream first token: {self.stream_first_token_timeout}s)"
         )
 
     def _is_hf_exhausted(self, exc: Exception) -> bool:
-        """Detect Hugging Face token/credit exhaustion (402 Payment Required, Rate limits)."""
+        """Detect Hugging Face token/credit exhaustion or timeout to trigger Groq fallback."""
+        if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+            if not self.hf_exhausted:
+                app_logger.warning(
+                    f"[LLM FALLBACK] Hugging Face timed out ({type(exc).__name__}). Switching to Groq API fallback."
+                )
+            self.hf_exhausted = True
+            return True
+
         err_str = str(exc).lower()
         if (
             "402" in err_str
@@ -63,10 +85,12 @@ class LLMService:
             or "quota" in err_str
             or "rate limit" in err_str
             or "429" in err_str
+            or "timeout" in err_str
+            or "timed out" in err_str
         ):
             if not self.hf_exhausted:
                 app_logger.warning(
-                    f"[TOKEN DEPLETION] Hugging Face credits exhausted: {exc}. Switching to Groq API fallback."
+                    f"[LLM FALLBACK] Hugging Face issue/timeout: {exc}. Switching to Groq API fallback."
                 )
             self.hf_exhausted = True
             return True
@@ -1154,6 +1178,24 @@ Return only the final user-facing answer."""
                     stream=True,
                 )
 
+                first_chunk = None
+                try:
+                    first_chunk = await asyncio.wait_for(
+                        stream.__anext__(),
+                        timeout=self.stream_first_token_timeout,
+                    )
+                except StopAsyncIteration:
+                    pass
+
+                if first_chunk and first_chunk.choices and len(first_chunk.choices) > 0:
+                    delta = first_chunk.choices[0].delta.content
+                    if delta is not None:
+                        t_first_token = time.monotonic()
+                        ttft = t_first_token - t_gen_start
+                        app_logger.info(f"[PERF] answer_generation TTFT={ttft:.2f}s model={target_model} max_tokens={max_out_tokens}")
+                        total_chars += len(delta)
+                        yield delta
+
                 async for chunk in stream:
                     if chunk.choices and len(chunk.choices) > 0:
                         delta = chunk.choices[0].delta.content
@@ -1193,6 +1235,25 @@ Return only the final user-facing answer."""
                     max_tokens=max_out_tokens,
                     stream=True,
                 )
+                first_chunk = None
+                try:
+                    first_chunk = await asyncio.wait_for(
+                        groq_stream.__anext__(),
+                        timeout=self.stream_first_token_timeout,
+                    )
+                except StopAsyncIteration:
+                    pass
+
+                if first_chunk and first_chunk.choices and len(first_chunk.choices) > 0:
+                    delta = first_chunk.choices[0].delta.content
+                    if delta is not None:
+                        if t_first_token is None:
+                            t_first_token = time.monotonic()
+                            ttft = t_first_token - t_gen_start
+                            app_logger.info(f"[PERF-GROQ] answer_generation TTFT={ttft:.2f}s model={self.groq_chat_model}")
+                        total_chars += len(delta)
+                        yield delta
+
                 async for chunk in groq_stream:
                     if chunk.choices and len(chunk.choices) > 0:
                         delta = chunk.choices[0].delta.content
@@ -1322,6 +1383,20 @@ ACADEMIC CITATION RULES:
                     stream=True,
                 )
 
+                first_chunk = None
+                try:
+                    first_chunk = await asyncio.wait_for(
+                        stream.__anext__(),
+                        timeout=self.stream_first_token_timeout,
+                    )
+                except StopAsyncIteration:
+                    pass
+
+                if first_chunk and first_chunk.choices and len(first_chunk.choices) > 0:
+                    delta = first_chunk.choices[0].delta.content
+                    if delta is not None:
+                        yield delta
+
                 async for chunk in stream:
                     if chunk.choices and len(chunk.choices) > 0:
                         delta = chunk.choices[0].delta.content
@@ -1342,6 +1417,20 @@ ACADEMIC CITATION RULES:
                     temperature=0.6,
                     stream=True,
                 )
+                first_chunk = None
+                try:
+                    first_chunk = await asyncio.wait_for(
+                        groq_stream.__anext__(),
+                        timeout=self.stream_first_token_timeout,
+                    )
+                except StopAsyncIteration:
+                    pass
+
+                if first_chunk and first_chunk.choices and len(first_chunk.choices) > 0:
+                    delta = first_chunk.choices[0].delta.content
+                    if delta is not None:
+                        yield delta
+
                 async for chunk in groq_stream:
                     if chunk.choices and len(chunk.choices) > 0:
                         delta = chunk.choices[0].delta.content
