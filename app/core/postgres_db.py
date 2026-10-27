@@ -11,6 +11,7 @@ import json
 import time
 import uuid
 import base64
+import urllib.parse
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 import psycopg2
@@ -118,14 +119,58 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_pg_gks_owner ON global_knowledge_summary(o
 """
 
 
+def normalize_postgres_dsn(dsn: str) -> str:
+    """
+    Normalize PostgreSQL DSN and robustly URL-encode username/password components.
+    Prevents libpq parsing errors when credentials contain special characters (e.g. '@', ':', '%')
+    such as Supabase connection strings where an unencoded '@' in the password causes libpq to misinterpret
+    the second half of the password as the host and the real host:port as the port parameter.
+    """
+    if not dsn:
+        return dsn
+    s = dsn.strip().strip("'").strip('"')
+    prefix = ""
+    if s.startswith("postgres://"):
+        prefix = "postgresql://"
+        s = s[len("postgres://"):]
+    elif s.startswith("postgresql://"):
+        prefix = "postgresql://"
+        s = s[len("postgresql://"):]
+    else:
+        return s
+
+    query = ""
+    if "?" in s:
+        s, query = s.split("?", 1)
+        query = "?" + query
+
+    path = ""
+    if "/" in s:
+        s, path = s.split("/", 1)
+        path = "/" + path
+
+    if "@" in s:
+        # Split on the LAST '@' to separate credentials from host:port
+        userinfo, host_port = s.rsplit("@", 1)
+        if ":" in userinfo:
+            user, password = userinfo.split(":", 1)
+            user = urllib.parse.quote(urllib.parse.unquote(user), safe="")
+            password = urllib.parse.quote(urllib.parse.unquote(password), safe="")
+            authority = f"{user}:{password}@{host_port}"
+        else:
+            user = urllib.parse.quote(urllib.parse.unquote(userinfo), safe="")
+            authority = f"{user}@{host_port}"
+    else:
+        authority = s
+
+    return f"{prefix}{authority}{path}{query}"
+
+
 class PostgresDB:
     """Robust, thread-safe PostgreSQL database client with connection pool and auto-reconnect."""
 
     def __init__(self, dsn: str):
-        # Normalize postgres:// to postgresql:// if needed
-        if dsn.startswith("postgres://"):
-            dsn = "postgresql://" + dsn[len("postgres://"):]
-        self._dsn = dsn
+        self._dsn = normalize_postgres_dsn(dsn)
         self._pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
         self._init_pool()
         self._init_schema()
