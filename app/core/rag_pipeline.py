@@ -636,6 +636,34 @@ class VectorlessRAG:
             # Signal retrieval completion stage to frontend
             yield f'<!--STAGE:{{"stage":"retrieved","duration":{t_retrieval:.2f},"nodes":{len(all_selected_nodes)},"docs":{len(docs)}}}-->\n'
 
+            # Determine contextual document topic for web and academic queries
+            doc_topic = None
+            if all_selected_nodes:
+                for n in all_selected_nodes:
+                    t = n.get("title", "")
+                    clean_t = re.sub(r'^(?:\d+[\.\)]*\s*|Abstract\b|Introduction\b)', '', t, flags=re.IGNORECASE).strip()
+                    clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_t).strip()
+                    if len(clean_t) > 4:
+                        doc_topic = clean_t
+                        break
+            if not doc_topic and docs:
+                for dobj in docs:
+                    dt = (dobj.get("tree") or [{}])[0].get("title", "")
+                    if dt and len(dt) > 4 and not dt.lower().startswith("section"):
+                        doc_topic = dt
+                        break
+                    sections = dobj.get("flat_sections") or []
+                    for s in sections[:3]:
+                        st = s.get("title", "")
+                        clean_st = re.sub(r'^(?:\d+[\.\)]*\s*|Abstract\b|Introduction\b)', '', st, flags=re.IGNORECASE).strip()
+                        if len(clean_st) > 4:
+                            doc_topic = clean_st
+                            break
+                    if doc_topic:
+                        break
+            if not doc_topic and doc_names_str and not doc_names_str.startswith("doc_"):
+                doc_topic = re.sub(r'\.pdf$', '', doc_names_str)
+
             # FastMCP Web Search fallback:
             # Trigger web search if document tree has NO matching nodes OR if user explicitly asks for web/latest info
             web_results = None
@@ -651,9 +679,13 @@ class VectorlessRAG:
                 try:
                     import json
                     from mcp_server.web_search_mcp import execute_web_search
-                    yield f'<!--STAGE:{{"stage":"web_search","query":{json.dumps(query)}}}-->\n'
+                    target_web_query = query
+                    has_latin_web = bool(re.search(r'[A-Za-z]{4,}', query))
+                    if not has_latin_web and doc_topic:
+                        target_web_query = f"{doc_topic} research papers"
+                    yield f'<!--STAGE:{{"stage":"web_search","query":{json.dumps(target_web_query)}}}-->\n'
                     t_web_start = time.monotonic()
-                    web_results = await execute_web_search(query, max_results=5)
+                    web_results = await execute_web_search(target_web_query, max_results=5)
                     t_web = time.monotonic() - t_web_start
                     app_logger.info(f"[FastMCP] Web search completed in {t_web:.2f}s with {len(web_results or [])} results")
                     yield f'<!--STAGE:{{"stage":"web_search_done","duration":{t_web:.2f},"results":{len(web_results or [])}}}-->\n'
@@ -666,7 +698,8 @@ class VectorlessRAG:
             is_academic_query = intent_res.get("is_academic", False)
             academic_triggers = [
                 "arxiv", "paper", "papers", "research paper", "literature review",
-                "citations", "academic", "preprint", "journal", "أوراق بحثية", "ورقة بحثية", "أبحاث"
+                "citations", "academic", "preprint", "journal", "أوراق بحثية", "ورقة بحثية",
+                "أبحاث", "ابحاث", "دراسات", "مراجع", "ابحاث مكمله", "ابحاث مكملة", "أبحاث مكملة",
             ]
             if not is_academic_query:
                 is_academic_query = any(at in q_lower for at in academic_triggers)
@@ -675,11 +708,17 @@ class VectorlessRAG:
                 try:
                     import json
                     from mcp_server.research_tools import search_arxiv_papers_async
-                    yield f'<!--STAGE:{{"stage":"arxiv_search","query":{json.dumps(query)}}}-->\n'
+
+                    arxiv_query = query
+                    has_latin_topic = bool(re.search(r'[A-Za-z]{4,}', re.sub(r'\barxiv\b', '', query, flags=re.IGNORECASE)))
+                    if not has_latin_topic and doc_topic:
+                        arxiv_query = doc_topic
+
+                    yield f'<!--STAGE:{{"stage":"arxiv_search","query":{json.dumps(arxiv_query)}}}-->\n'
                     t_arxiv_start = time.monotonic()
-                    arxiv_results = await search_arxiv_papers_async(query, max_results=4)
+                    arxiv_results = await search_arxiv_papers_async(arxiv_query, max_results=5)
                     t_arxiv = time.monotonic() - t_arxiv_start
-                    app_logger.info(f"[arXiv] Academic search completed in {t_arxiv:.2f}s with {len(arxiv_results or [])} papers")
+                    app_logger.info(f"[arXiv] Academic search completed in {t_arxiv:.2f}s with {len(arxiv_results or [])} papers for '{arxiv_query}'")
                     yield f'<!--STAGE:{{"stage":"arxiv_search_done","duration":{t_arxiv:.2f},"results":{len(arxiv_results or [])}}}-->\n'
                 except Exception as arxiv_err:
                     app_logger.warning(f"[arXiv] Academic search failed: {arxiv_err}")
