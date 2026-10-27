@@ -144,18 +144,51 @@ async def upload_pdf(
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid file type. Only PDF documents are supported."
         )
 
-    contents = await file.read()
-    if not contents:
+    # Chunked streaming read with size limits and PDF magic byte verification
+    CHUNK_SIZE = 64 * 1024  # 64 KB
+    max_mb_str = os.getenv("MAX_FILE_SIZE_MB", "20")
+    try:
+        max_bytes = int(max_mb_str) * 1024 * 1024
+    except ValueError:
+        max_bytes = 20 * 1024 * 1024
+
+    hasher = hashlib.sha256()
+    total_bytes = 0
+    chunks = []
+    first_chunk = True
+
+    while True:
+        chunk = await file.read(CHUNK_SIZE)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File exceeds maximum allowed size of {max_mb_str} MB.",
+            )
+        if first_chunk:
+            if not chunk.startswith(b"%PDF-"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Uploaded file is not a valid PDF document",
+                )
+            first_chunk = False
+
+        hasher.update(chunk)
+        chunks.append(chunk)
+
+    if total_bytes == 0:
         raise HTTPException(
-            status_code=400,
-            detail="The uploaded PDF file is empty."
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded PDF file is empty.",
         )
 
-    content_hash = hashlib.sha256(contents).hexdigest()
+    content_hash = hasher.hexdigest()
 
     # Deduplication check: Check if same document is already ready or currently indexing for this owner
     existing_doc = storage.get_doc_by_hash(content_hash, owner_id=client_id)
@@ -195,16 +228,17 @@ async def upload_pdf(
                 page_count=0,
             )
 
-    # Persist file to local disk
+    # Persist file to local disk using sanitized doc_id filename
     doc_id = str(uuid.uuid4())
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(UPLOAD_DIR, f"{doc_id}_{file.filename}")
+    file_path = os.path.join(UPLOAD_DIR, f"{doc_id}.pdf")
     with open(file_path, "wb") as buffer:
-        buffer.write(contents)
+        for c in chunks:
+            buffer.write(c)
 
     app_logger.info(
         f"[INDEX] document_id={doc_id} stage=upload filename='{file.filename}' "
-        f"size={len(contents)} hash={content_hash[:12]} owner={client_id}"
+        f"size={total_bytes} hash={content_hash[:12]} owner={client_id}"
     )
 
     # Register document in storage with owner_id
