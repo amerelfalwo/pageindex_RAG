@@ -27,25 +27,27 @@ def test_public_endpoints_accessible_without_client_id(client):
     assert r_openapi.status_code == 200
 
 
-def test_protected_endpoints_reject_missing_client_id(client):
-    """Protected endpoints must return 400 if X-Client-ID is missing."""
+def test_protected_endpoints_fallback_missing_client_id(client):
+    """Protected endpoints gracefully fall back to default client ID when X-Client-ID is missing."""
     r = client.get("/chats")
-    assert r.status_code == 400
-    assert "Missing required header: X-Client-ID" in r.json()["detail"]
+    assert r.status_code == 200
+    assert "chats" in r.json()
 
     r_docs = client.get("/documents")
-    assert r_docs.status_code == 400
+    assert r_docs.status_code == 200
+    assert "documents" in r_docs.json()
 
     r_tools = client.post("/tools/calculate-math", json={"expression": "1 + 1"})
-    assert r_tools.status_code == 400
+    assert r_tools.status_code == 200
+    assert r_tools.json()["result"] == 2
 
 
-def test_protected_endpoints_reject_invalid_uuid(client):
-    """Protected endpoints must return 400 if X-Client-ID is not a valid UUIDv4."""
-    bad_headers = {"X-Client-ID": "not-a-valid-uuid-string"}
+def test_protected_endpoints_fallback_invalid_uuid(client):
+    """Protected endpoints gracefully handle non-UUID string without throwing 400 error."""
+    bad_headers = {"X-Client-ID": "custom-client-string"}
     r = client.get("/chats", headers=bad_headers)
-    assert r.status_code == 400
-    assert "valid UUID" in r.json()["detail"]
+    assert r.status_code == 200
+    assert "chats" in r.json()
 
 
 def test_chat_isolation_between_clients(client):
