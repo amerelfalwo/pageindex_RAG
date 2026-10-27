@@ -8,7 +8,13 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, R
 from services.document_service import DocumentService
 from services.llm_service import LLMService
 from core.storage import MemoryStorage
-from core.dependencies import get_document_service, get_llm_service, get_storage, get_client_id
+from core.dependencies import (
+    get_document_service,
+    get_llm_service,
+    get_storage,
+    get_client_id,
+    rate_limit_upload,
+)
 from schemas.schemas import UploadResponse, DocumentStatusResponse
 from utils.logger import app_logger
 from core.persistent_db import DATA_DIR
@@ -129,6 +135,7 @@ async def upload_pdf(
     llm_service: LLMService = Depends(get_llm_service),
     storage: MemoryStorage = Depends(get_storage),
     client_id: str = Depends(get_client_id),
+    _rl: None = Depends(rate_limit_upload),
 ):
     """
     Asynchronous PDF upload and indexing endpoint.

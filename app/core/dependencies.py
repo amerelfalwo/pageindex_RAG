@@ -54,3 +54,12 @@ def get_memory_service() -> 'MemoryService':
     from services.memory_service import MemoryService
     return MemoryService(get_llm_service())
 
+
+from core.rate_limiter import DualKeyRateLimitChecker
+
+rate_limit_ask = DualKeyRateLimitChecker("ask", default_limit=20, env_var_name="RATE_LIMIT_ASK_PER_MIN")
+rate_limit_upload = DualKeyRateLimitChecker("upload", default_limit=5, env_var_name="RATE_LIMIT_UPLOAD_PER_MIN")
+rate_limit_quiz = DualKeyRateLimitChecker("quiz", default_limit=5, env_var_name="RATE_LIMIT_QUIZ_PER_MIN")
+rate_limit_tools = DualKeyRateLimitChecker("tools", default_limit=20, env_var_name="RATE_LIMIT_TOOLS_PER_MIN")
+
+

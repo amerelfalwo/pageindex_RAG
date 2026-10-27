@@ -4,7 +4,14 @@ from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from core.dependencies import get_storage, get_document_service, get_llm_service, get_memory_service, get_client_id
+from core.dependencies import (
+    get_storage,
+    get_document_service,
+    get_llm_service,
+    get_memory_service,
+    get_client_id,
+    rate_limit_quiz,
+)
 from core.storage import MemoryStorage
 from services.document_service import DocumentService
 from services.llm_service import LLMService
@@ -170,6 +177,7 @@ async def generate_document_quiz(
     storage: MemoryStorage = Depends(get_storage),
     doc_service: DocumentService = Depends(get_document_service),
     llm_service: LLMService = Depends(get_llm_service),
+    _rl: None = Depends(rate_limit_quiz),
 ):
     """
     Generates 5 Multiple Choice Questions and 5 Study Flashcards for a document

@@ -19,6 +19,7 @@ from core.dependencies import (
     get_storage,
     get_memory_service,
     get_client_id,
+    rate_limit_ask,
 )
 from core.rag_pipeline import VectorlessRAG
 from services.llm_service import LLMService
@@ -138,6 +139,7 @@ async def ask_question(
     rag_pipeline: VectorlessRAG = Depends(get_rag_pipeline),
     memory_service: MemoryService = Depends(get_memory_service),
     client_id: str = Depends(get_client_id),
+    _rl: None = Depends(rate_limit_ask),
 ):
     # Ensure chat session exists in persistent storage and is owned by client_id
     if storage.chat_exists(request.chat_id):
