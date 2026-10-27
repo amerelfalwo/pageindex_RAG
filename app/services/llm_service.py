@@ -662,9 +662,29 @@ If there is insufficient evidence:
                 app_logger.info(
                     f"[FALLBACK] Executing tree search via Groq ({self.groq_retrieval_model})"
                 )
+                groq_prompt = prompt
+                # Groq on-demand models have an 8000 TPM limit. If prompt exceeds 18,000 chars,
+                # compact all_nodes_data (omitting full summaries) so it fits safely within ~3,500 tokens.
+                if len(prompt) > 18000:
+                    compact_nodes = [
+                        {"node_id": n.get("node_id"), "title": n.get("title", ""), "page": n.get("page_index")}
+                        for n in all_nodes_data
+                    ]
+                    groq_prompt = f"""You are a specialized Document Tree Search Engine.
+Select between 1 and 4 most relevant nodes for the query.
+
+AVAILABLE DOCUMENT SECTIONS:
+{json.dumps(compact_nodes, separators=(',', ':'))}
+
+USER QUERY:
+{query}
+
+Return ONLY valid JSON:
+{{"node_list": ["node_id1", "node_id2"]}}
+"""
                 groq_resp = await self.groq_client.chat.completions.create(
                     model=self.groq_retrieval_model,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=[{"role": "user", "content": groq_prompt}],
                     temperature=0.1,
                     max_tokens=300,
                 )
@@ -1236,9 +1256,16 @@ Return only the final user-facing answer."""
         if (self.hf_exhausted or hf_stream_failed) and self.groq_client:
             try:
                 app_logger.info(f"[FALLBACK] Generating answer stream via Groq ({self.groq_chat_model})")
+                groq_messages = []
+                for m in messages:
+                    c = m.get("content", "")
+                    if len(c) > 18000:
+                        c = c[:18000] + "\n\n... [Evidence truncated to fit Groq 8000 TPM limit] ..."
+                    groq_messages.append({"role": m["role"], "content": c})
+
                 groq_stream = await self.groq_client.chat.completions.create(
                     model=self.groq_chat_model,
-                    messages=messages,
+                    messages=groq_messages,
                     temperature=0.2,
                     max_tokens=max_out_tokens,
                     stream=True,
