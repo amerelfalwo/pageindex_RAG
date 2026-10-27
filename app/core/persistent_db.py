@@ -200,7 +200,7 @@ class SQLitePersistentDB:
     def get_chat(self, chat_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         if owner_id:
             row = self._conn().execute(
-                "SELECT * FROM chats WHERE chat_id=? AND owner_id=?", (chat_id, owner_id)
+                "SELECT * FROM chats WHERE chat_id=? AND (owner_id=? OR owner_id IS NULL)", (chat_id, owner_id)
             ).fetchone()
         else:
             row = self._conn().execute(
@@ -211,7 +211,7 @@ class SQLitePersistentDB:
     def list_chats(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
         if owner_id:
             rows = self._conn().execute(
-                "SELECT * FROM chats WHERE owner_id=? ORDER BY updated_at DESC", (owner_id,)
+                "SELECT * FROM chats WHERE owner_id=? OR owner_id IS NULL ORDER BY updated_at DESC", (owner_id,)
             ).fetchall()
         else:
             rows = self._conn().execute(
@@ -331,7 +331,7 @@ class SQLitePersistentDB:
     def get_doc_meta(self, doc_id: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         if owner_id:
             row = self._conn().execute(
-                "SELECT * FROM doc_meta WHERE doc_id=? AND owner_id=?", (doc_id, owner_id)
+                "SELECT * FROM doc_meta WHERE doc_id=? AND (owner_id=? OR owner_id IS NULL)", (doc_id, owner_id)
             ).fetchone()
         else:
             row = self._conn().execute(
@@ -342,7 +342,7 @@ class SQLitePersistentDB:
     def list_docs(self, owner_id: Optional[str] = None) -> List[Dict[str, Any]]:
         if owner_id:
             rows = self._conn().execute(
-                "SELECT * FROM doc_meta WHERE owner_id=? ORDER BY created_at DESC", (owner_id,)
+                "SELECT * FROM doc_meta WHERE owner_id=? OR owner_id IS NULL ORDER BY created_at DESC", (owner_id,)
             ).fetchall()
         else:
             rows = self._conn().execute(
@@ -353,7 +353,7 @@ class SQLitePersistentDB:
     def find_doc_by_hash(self, content_hash: str, owner_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         if owner_id:
             row = self._conn().execute(
-                "SELECT * FROM doc_meta WHERE content_hash=? AND owner_id=? ORDER BY updated_at DESC LIMIT 1",
+                "SELECT * FROM doc_meta WHERE content_hash=? AND (owner_id=? OR owner_id IS NULL) ORDER BY updated_at DESC LIMIT 1",
                 (content_hash, owner_id),
             ).fetchone()
         else:

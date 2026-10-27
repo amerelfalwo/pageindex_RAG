@@ -260,7 +260,7 @@ class PostgresDB:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 if owner_id:
-                    cur.execute("SELECT * FROM chats WHERE chat_id = %s AND owner_id = %s", (chat_id, owner_id))
+                    cur.execute("SELECT * FROM chats WHERE chat_id = %s AND (owner_id = %s OR owner_id IS NULL)", (chat_id, owner_id))
                 else:
                     cur.execute("SELECT * FROM chats WHERE chat_id = %s", (chat_id,))
                 row = cur.fetchone()
@@ -270,7 +270,7 @@ class PostgresDB:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 if owner_id:
-                    cur.execute("SELECT * FROM chats WHERE owner_id = %s ORDER BY updated_at DESC", (owner_id,))
+                    cur.execute("SELECT * FROM chats WHERE owner_id = %s OR owner_id IS NULL ORDER BY updated_at DESC", (owner_id,))
                 else:
                     cur.execute("SELECT * FROM chats ORDER BY updated_at DESC")
                 rows = cur.fetchall()
@@ -419,7 +419,7 @@ class PostgresDB:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 if owner_id:
-                    cur.execute("SELECT * FROM doc_meta WHERE doc_id = %s AND owner_id = %s", (doc_id, owner_id))
+                    cur.execute("SELECT * FROM doc_meta WHERE doc_id = %s AND (owner_id = %s OR owner_id IS NULL)", (doc_id, owner_id))
                 else:
                     cur.execute("SELECT * FROM doc_meta WHERE doc_id = %s", (doc_id,))
                 row = cur.fetchone()
@@ -429,7 +429,7 @@ class PostgresDB:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 if owner_id:
-                    cur.execute("SELECT * FROM doc_meta WHERE owner_id = %s ORDER BY created_at DESC", (owner_id,))
+                    cur.execute("SELECT * FROM doc_meta WHERE owner_id = %s OR owner_id IS NULL ORDER BY created_at DESC", (owner_id,))
                 else:
                     cur.execute("SELECT * FROM doc_meta ORDER BY created_at DESC")
                 rows = cur.fetchall()
@@ -440,7 +440,7 @@ class PostgresDB:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 if owner_id:
                     cur.execute(
-                        "SELECT * FROM doc_meta WHERE content_hash = %s AND owner_id = %s ORDER BY updated_at DESC LIMIT 1",
+                        "SELECT * FROM doc_meta WHERE content_hash = %s AND (owner_id = %s OR owner_id IS NULL) ORDER BY updated_at DESC LIMIT 1",
                         (content_hash, owner_id),
                     )
                 else:

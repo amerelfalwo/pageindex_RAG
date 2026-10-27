@@ -38,7 +38,7 @@ app.add_middleware(
     allow_origin_regex=os.getenv("CORS_ALLOW_ORIGIN_REGEX", r"https://.*\.vercel\.app|https://.*\.hf\.space"),
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Client-ID", "Accept", "Authorization"],
+    allow_headers=["*"],
 )
 
 # Register API routers

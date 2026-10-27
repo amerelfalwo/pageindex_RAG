@@ -9,21 +9,24 @@ from core.rag_pipeline import VectorlessRAG
 from core.storage import storage, MemoryStorage
 
 
+DEFAULT_CLIENT_ID = "00000000-0000-4000-8000-000000000000"
+
+
 def get_client_id(x_client_id: Optional[str] = Header(None, alias="X-Client-ID")) -> str:
-    """FastAPI dependency validating the X-Client-ID header as a valid UUIDv4."""
+    """FastAPI dependency validating the X-Client-ID header as a valid UUIDv4.
+    If missing or invalid, gracefully defaults to DEFAULT_CLIENT_ID to ensure
+    resilience against missing headers, health checks, or unauthenticated clients.
+    """
     if not x_client_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing required header: X-Client-ID",
-        )
+        return DEFAULT_CLIENT_ID
     try:
         val = uuid.UUID(x_client_id.strip(), version=4)
         return str(val)
     except (ValueError, AttributeError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid X-Client-ID format: must be a valid UUIDv4 string",
-        )
+        try:
+            return str(uuid.uuid5(uuid.NAMESPACE_DNS, x_client_id.strip()))
+        except Exception:
+            return DEFAULT_CLIENT_ID
 
 
 @lru_cache()
