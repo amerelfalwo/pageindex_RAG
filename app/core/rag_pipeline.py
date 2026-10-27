@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 from typing import Optional, List, Dict, Any
 from utils.logger import app_logger
@@ -7,6 +8,181 @@ from utils.logger import app_logger
 class VectorlessRAG:
     def __init__(self, llm_service):
         self.llm = llm_service
+
+    @staticmethod
+    def _parse_paragraphs_with_page_markers(text: str, default_page: Any) -> List[Dict[str, Any]]:
+        """
+        Parses raw node text into paragraphs, tracking the nearest preceding --- [PAGE X] --- marker.
+        Returns a list of dicts: [{"page": int_or_str, "text": str}]
+        """
+        marker_pattern = re.compile(r'---\s*\[PAGE\s+(\d+)\]\s*---', re.IGNORECASE)
+        try:
+            curr_page = int(default_page) if str(default_page).isdigit() else default_page
+        except Exception:
+            curr_page = default_page or 1
+
+        blocks = re.split(r'\n\s*\n', text.strip())
+        paragraphs: List[Dict[str, Any]] = []
+
+        for block in blocks:
+            block = block.strip()
+            if not block:
+                continue
+
+            lines = block.split('\n')
+            current_lines = []
+            for line in lines:
+                clean_line = line.strip()
+                m = marker_pattern.search(clean_line)
+                if m:
+                    # Flush accumulated text before the new marker
+                    if current_lines:
+                        p_txt = "\n".join(current_lines).strip()
+                        if p_txt:
+                            paragraphs.append({"page": curr_page, "text": p_txt})
+                        current_lines = []
+                    curr_page = int(m.group(1))
+                    remainder = marker_pattern.sub('', clean_line).strip()
+                    if remainder:
+                        current_lines.append(remainder)
+                else:
+                    current_lines.append(line)
+
+            if current_lines:
+                p_txt = "\n".join(current_lines).strip()
+                if p_txt:
+                    paragraphs.append({"page": curr_page, "text": p_txt})
+
+        return paragraphs
+
+    @classmethod
+    def prune_sub_nodes(
+        cls,
+        query: str,
+        nodes: List[Dict[str, Any]],
+        deep_analysis: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Sub-Node Paragraph Pruning:
+        Splits long node contents (> 1200 characters) into paragraphs while preserving
+        the nearest preceding --- [PAGE X] --- marker for each paragraph.
+        Scores each paragraph against user query terms and selects only the top relevant
+        paragraphs, reassembled in original reading order.
+        """
+        if not nodes:
+            return []
+
+        min_char_threshold = 1200
+        target_budget = 3600 if deep_analysis else 1800
+        max_paras = 8 if deep_analysis else 4
+
+        # Extract meaningful query keywords
+        q_clean = query.lower()
+        raw_words = re.findall(r'[\w\-]+', q_clean)
+        stopwords = {
+            'the', 'and', 'for', 'that', 'this', 'with', 'from', 'what', 'which', 'where',
+            'when', 'how', 'why', 'are', 'was', 'were', 'been', 'have', 'has', 'had', 'does',
+            'did', 'about', 'some', 'any', 'each', 'into', 'over', 'after', 'before', 'such',
+            'في', 'من', 'على', 'إلى', 'عن', 'مع', 'هذا', 'هذه', 'ذلك', 'تلك', 'التي', 'الذي',
+            'ما', 'ماذا', 'كيف', 'لماذا', 'أين', 'متى', 'كم', 'هل', 'هو', 'هي', 'أن', 'إن', 'كان'
+        }
+        query_terms = [w for w in raw_words if len(w) >= 2 and w not in stopwords]
+        if not query_terms:
+            query_terms = [w for w in raw_words if len(w) >= 2]
+
+        pruned_nodes: List[Dict[str, Any]] = []
+        for node in nodes:
+            node_copy = dict(node)
+            raw_text = (node.get("text") or node.get("content") or "").strip()
+            if len(raw_text) <= min_char_threshold:
+                pruned_nodes.append(node_copy)
+                continue
+
+            default_page = node.get("page_index") or node.get("page") or 1
+            paragraphs = cls._parse_paragraphs_with_page_markers(raw_text, default_page)
+            if len(paragraphs) <= 1:
+                pruned_nodes.append(node_copy)
+                continue
+
+            # Score each paragraph
+            scored_paras = []
+            for idx, p in enumerate(paragraphs):
+                p_text = p["text"]
+                p_lower = p_text.lower()
+                p_tokens = set(re.findall(r'[\w\-]+', p_lower))
+
+                score = 0.0
+                # 1. Keyword overlap
+                overlap = sum(1 for t in query_terms if t in p_tokens or t in p_lower)
+                score += overlap * 3.0
+
+                # 2. Term frequency bonus
+                if query_terms:
+                    tf_sum = sum(p_lower.count(t) for t in query_terms)
+                    score += min(tf_sum * 0.4, 4.0)
+
+                # 3. Exact multi-word phrase matching
+                if len(query_terms) >= 2:
+                    for i in range(len(query_terms) - 1):
+                        bigram = f"{query_terms[i]} {query_terms[i+1]}"
+                        if bigram in p_lower:
+                            score += 4.0
+
+                # 4. Uppercase / acronym / numerical match boost
+                for w in raw_words:
+                    if (w.isupper() or any(c.isdigit() for c in w)) and len(w) >= 2 and w in p_lower:
+                        score += 2.5
+
+                # 5. Position bias for leading introduction/definition paragraph
+                if idx == 0:
+                    score += 0.8
+
+                scored_paras.append((idx, p, score))
+
+            # Sort by score descending to choose best paragraphs
+            scored_paras.sort(key=lambda x: x[2], reverse=True)
+
+            selected_indices = set()
+            accumulated_chars = 0
+
+            # Always take the #1 highest scoring paragraph
+            top_idx, top_para, top_score = scored_paras[0]
+            selected_indices.add(top_idx)
+            accumulated_chars += len(top_para["text"])
+
+            for idx, p, sc in scored_paras[1:]:
+                if len(selected_indices) >= max_paras or accumulated_chars >= target_budget:
+                    break
+                if sc > 0 or len(selected_indices) < 2:
+                    selected_indices.add(idx)
+                    accumulated_chars += len(p["text"])
+
+            # Reassemble selected paragraphs in original document order
+            selected_paras = [paragraphs[i] for i in sorted(selected_indices)]
+
+            reconstructed_parts = []
+            last_page = None
+            for p in selected_paras:
+                p_page = p["page"]
+                p_txt = p["text"]
+                if p_page != last_page:
+                    reconstructed_parts.append(f"--- [PAGE {p_page}] ---")
+                    last_page = p_page
+                reconstructed_parts.append(p_txt)
+
+            new_text = "\n\n".join(reconstructed_parts)
+            node_copy["text"] = new_text
+            node_copy["is_pruned"] = True
+            node_copy["original_chars"] = len(raw_text)
+            node_copy["pruned_chars"] = len(new_text)
+
+            app_logger.info(
+                f"[PRUNE] node='{node.get('title')}' original={len(raw_text)} chars -> "
+                f"pruned={len(new_text)} chars ({len(selected_paras)}/{len(paragraphs)} paras)"
+            )
+            pruned_nodes.append(node_copy)
+
+        return pruned_nodes
 
     async def answer_multi_doc_query_stream(
         self,
@@ -121,10 +297,17 @@ class VectorlessRAG:
                 except Exception as web_err:
                     app_logger.warning(f"[FastMCP] Web search fallback failed: {web_err}")
 
+            # Apply Sub-Node Paragraph Pruning before synthesis
+            pruned_nodes = self.prune_sub_nodes(
+                query=query,
+                nodes=all_selected_nodes,
+                deep_analysis=deep_analysis,
+            )
+
             # Stream final synthesis with multi-document attribution and web links
             async for chunk in self.llm.generate_answer_stream(
                 query=query,
-                nodes=all_selected_nodes,
+                nodes=pruned_nodes,
                 chat_history=chat_history,
                 doc_name=doc_names_str,
                 session_summary=session_summary,

@@ -949,8 +949,12 @@ CITATION & SOURCING RULES
 
 1. IF ANSWERING FROM THE ATTACHED PDF DOCUMENT:
    - Base your answer directly on the retrieved document context.
-   - You MUST place citations immediately after the relevant claim or paragraph:
+   - EXACT PAGE-LEVEL CITATION DIRECTIVE:
+     Inside each section's retrieved text, exact page transitions are marked with `--- [PAGE X] ---`.
+     When citing a specific fact, definition, number, methodology, or claim, YOU MUST cite the EXACT page number indicated by the nearest preceding `--- [PAGE X] ---` marker where that specific statement appears, rather than defaulting to the section's starting page.
+     Place citations immediately after the relevant claim or paragraph:
      (Section: "Section Title", Page: X)
+   - Fallback: If no `--- [PAGE X] ---` marker is found inside the text (e.g., legacy indexed documents), fallback gracefully to the section's base page number from the section header: [Page Y].
    - Never invent a page number. If page is unavailable or "?", cite section title only:
      (Section: "Section Title")
    - Do not cite sections that do not exist in the document.

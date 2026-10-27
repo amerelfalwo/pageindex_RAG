@@ -134,42 +134,121 @@ class DocumentService:
 
         return tree
 
+    @staticmethod
+    def _extract_page_texts(doc: fitz.Document) -> Dict[int, str]:
+        """Extracts text for all pages into a 1-indexed dictionary."""
+        page_texts: Dict[int, str] = {}
+        for idx in range(len(doc)):
+            page_texts[idx + 1] = doc[idx].get_text() or ""
+        return page_texts
+
+    @staticmethod
+    def _format_page_tagged_text(page_texts: Dict[int, str], start_page: int, end_page: int) -> str:
+        """Formats text across a range of pages with explicit --- [PAGE X] --- delimiters."""
+        parts: List[str] = []
+        for p in range(start_page, end_page + 1):
+            p_text = page_texts.get(p, "").strip()
+            if p_text:
+                parts.append(f"--- [PAGE {p}] ---\n{p_text}")
+        if not parts:
+            return f"--- [PAGE {start_page}] ---\n(No textual content on this page)"
+        return "\n\n".join(parts)
+
+    def _inject_page_boundaries(self, tree: Any, page_texts: Dict[int, str], total_pages: int):
+        """Enriches tree nodes with explicit --- [PAGE X] --- boundary markers across each section's page span."""
+        if isinstance(tree, dict):
+            tree = [tree]
+        if not isinstance(tree, list):
+            return tree
+
+        flat_nodes: List[Dict[str, Any]] = []
+        def collect_nodes(items):
+            for it in items:
+                if isinstance(it, dict):
+                    flat_nodes.append(it)
+                    if it.get("nodes"):
+                        collect_nodes(it["nodes"])
+        collect_nodes(tree)
+
+        for i, node in enumerate(flat_nodes):
+            p_start = node.get("page_index") or node.get("page") or node.get("start_page")
+            if not p_start:
+                continue
+            try:
+                p_start = max(1, int(p_start))
+            except Exception:
+                continue
+
+            # Determine next section start page
+            p_next = None
+            for j in range(i + 1, len(flat_nodes)):
+                cand_p = flat_nodes[j].get("page_index") or flat_nodes[j].get("page") or flat_nodes[j].get("start_page")
+                if cand_p:
+                    try:
+                        cand_p = int(cand_p)
+                        if cand_p > p_start:
+                            p_next = cand_p
+                            break
+                    except Exception:
+                        pass
+            p_end = (p_next - 1) if p_next else total_pages
+            p_end = max(p_start, min(total_pages, p_end))
+
+            current_text = node.get("text") or ""
+            # Inject explicit page boundaries if markers are missing
+            if "--- [PAGE " not in current_text:
+                tagged_text = self._format_page_tagged_text(page_texts, p_start, p_end)
+                node["text"] = tagged_text
+            node["page_index"] = p_start
+
+        return tree
+
     def _local_pdf_parse(self, file_path: str) -> list:
         """Fast local fallback parser using PyMuPDF when cloud indexing is unavailable or times out."""
         app_logger.info(f"Extracting document structure locally via PyMuPDF for: {file_path}")
         doc = fitz.open(file_path)
         nodes = []
+        total_pages = len(doc)
+        page_texts = self._extract_page_texts(doc)
 
         # Try to extract TOC / Outlines if available
         toc = doc.get_toc()  # [[lvl, title, page], ...]
-        page_texts = {}
-        for i, page in enumerate(doc):
-            page_texts[i + 1] = page.get_text()
 
         if toc and len(toc) > 0:
-            for item in toc:
-                level, title, page_num = item[0], item[1], item[2]
-                text = page_texts.get(page_num, "")
+            for idx, item in enumerate(toc):
+                level, title, page_num = item[0], item[1], max(1, item[2])
+                if idx + 1 < len(toc):
+                    next_page = max(1, toc[idx + 1][2])
+                    page_end = max(page_num, next_page - 1) if next_page > page_num else page_num
+                else:
+                    page_end = total_pages
+
+                tagged_text = self._format_page_tagged_text(page_texts, page_num, page_end)
+                first_lines = [l.strip() for l in tagged_text.split("\n") if l.strip() and not l.startswith("--- [PAGE")]
+                summary = " ".join(first_lines[:3])[:250] if first_lines else (title.strip() or f"Section p.{page_num}")
+
                 nodes.append({
                     "node_id": f"sec_{uuid.uuid4().hex[:8]}",
                     "title": title.strip() or f"Section p.{page_num}",
                     "page_index": page_num,
-                    "text": text,
-                    "summary": text[:200].replace("\n", " ").strip(),
+                    "text": tagged_text,
+                    "summary": summary,
                 })
 
         if not nodes:
             # Fallback: page by page extraction
-            for page_num, text in page_texts.items():
-                if not text.strip():
+            for page_num in range(1, total_pages + 1):
+                raw_text = page_texts.get(page_num, "").strip()
+                if not raw_text:
                     continue
-                lines = [line.strip() for line in text.split("\n") if line.strip()]
+                lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
                 first_heading = lines[0][:80] if lines else f"Page {page_num}"
+                tagged_text = f"--- [PAGE {page_num}] ---\n{raw_text}"
                 nodes.append({
                     "node_id": f"page_{page_num}",
                     "title": first_heading,
                     "page_index": page_num,
-                    "text": text,
+                    "text": tagged_text,
                     "summary": " ".join(lines[:3])[:250],
                 })
 
@@ -220,11 +299,13 @@ class DocumentService:
 
         # 1. Physical page count of the PDF via PyMuPDF (guaranteed accurate)
         actual_page_count = 1
+        page_texts: Dict[int, str] = {}
         try:
             with fitz.open(file_path) as pdf_doc:
                 actual_page_count = len(pdf_doc)
+                page_texts = self._extract_page_texts(pdf_doc)
         except Exception as e:
-            app_logger.warning(f"Could not read page count via PyMuPDF for {file_path}: {e}")
+            app_logger.warning(f"Could not read PDF via PyMuPDF for {file_path}: {e}")
 
         app_logger.info(f"[INDEX] {doc_log}stage=upload pages={actual_page_count}")
         if on_stage:
@@ -241,6 +322,7 @@ class DocumentService:
             nodes = self._local_pdf_parse(file_path)
             t_parse = time.monotonic() - t_parse_start
             tree = self._inject_images(nodes, page_images)
+            tree = self._inject_page_boundaries(tree, page_texts, actual_page_count)
             sec_count = self._count_sections(tree)
             total_time = time.monotonic() - t_start
             app_logger.info(f"[INDEX] {doc_log}stage=ready duration={total_time:.2f}s method=pymupdf pages={actual_page_count} sections={sec_count}")
@@ -307,6 +389,7 @@ class DocumentService:
 
                     if self._is_valid_tree(raw_tree):
                         tree = self._inject_images(raw_tree, page_images)
+                        tree = self._inject_page_boundaries(tree, page_texts, actual_page_count)
                         sec_count = self._count_sections(tree)
                         total_time = time.monotonic() - t_start
                         app_logger.info(
@@ -337,6 +420,7 @@ class DocumentService:
                 nodes = self._local_pdf_parse(file_path)
                 t_parse = time.monotonic() - t_parse_start
                 tree = self._inject_images(nodes, page_images)
+                tree = self._inject_page_boundaries(tree, page_texts, actual_page_count)
                 sec_count = self._count_sections(tree)
                 total_time = time.monotonic() - t_start
                 app_logger.info(
@@ -368,6 +452,7 @@ class DocumentService:
         t_parse_start = time.monotonic()
         nodes = self._local_pdf_parse(file_path)
         tree = self._inject_images(nodes, page_images)
+        tree = self._inject_page_boundaries(tree, page_texts, actual_page_count)
         sec_count = self._count_sections(tree)
         total_time = time.monotonic() - t_start
         app_logger.info(

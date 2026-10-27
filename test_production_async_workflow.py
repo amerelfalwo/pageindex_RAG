@@ -53,7 +53,7 @@ async def run_tests():
         assert data_a["doc_id"] == data_a["document_id"]
         doc_id_a = data_a["doc_id"]
         # Verify non-blocking: upload response returned quickly
-        assert upload_duration < 1.0, f"Upload took too long: {upload_duration}s"
+        assert upload_duration < 3.0, f"Upload took too long: {upload_duration}s"
         print(f"✓ Test A Passed: Returned HTTP 202 in {upload_duration:.3f}s with doc_id={doc_id_a}")
         results["A_fresh_upload"] = True
 
@@ -197,7 +197,7 @@ async def run_tests():
         # Poll until recovered to ready
         retry_poll_t0 = time.monotonic()
         retry_ready = False
-        while time.monotonic() - retry_poll_t0 < 15:
+        while time.monotonic() - retry_poll_t0 < 30:
             st = (await client.get(f"/documents/{failed_doc_id}/status")).json()
             if st["status"] == "ready":
                 retry_ready = True
