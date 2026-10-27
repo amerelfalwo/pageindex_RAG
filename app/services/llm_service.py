@@ -1329,3 +1329,188 @@ WEB SEARCH SOURCING & LINK VERIFICATION RULES:
             else "Sorry, the model service is currently unreachable. Please try again."
         )
         yield err_msg
+
+    async def generate_quiz_and_flashcards(
+        self, filename: str, tree: list, dossier: Optional[dict] = None
+    ) -> dict:
+        """
+        Uses LLM (with HF + Groq fallback) to generate 5 MCQs and 5 Flashcards from the document.
+        Each item includes question, options (for MCQ), answer, explanation, and exact source citation (Section, Page).
+        """
+        # 1. Prepare structured outline and dossier summary
+        dossier_lines = []
+        if dossier:
+            if dossier.get("executive_summary"):
+                dossier_lines.append(f"Executive Summary: {dossier['executive_summary']}")
+            if dossier.get("key_findings"):
+                dossier_lines.append("Key Findings: " + "; ".join(dossier["key_findings"]))
+            if dossier.get("topics"):
+                dossier_lines.append("Main Topics: " + ", ".join(dossier["topics"]))
+        dossier_str = "\n".join(dossier_lines) if dossier_lines else f"Study materials for {filename}."
+
+        outline_lines = []
+        sections_sample = []
+        def collect_sections(items):
+            for it in items:
+                if isinstance(it, dict):
+                    t = it.get("title") or "Section"
+                    p = it.get("page_index") or it.get("page") or 1
+                    s = it.get("summary") or (it.get("text") or "")[:200].replace("\n", " ").strip()
+                    outline_lines.append(f"- Section: '{t}' (Page: {p}) | Summary: {s}")
+                    sections_sample.append({"title": t, "page": p, "summary": s})
+                    if it.get("nodes"):
+                        collect_sections(it["nodes"])
+        collect_sections(tree[:15] if isinstance(tree, list) else [])
+
+        outline_str = "\n".join(outline_lines[:15]) if outline_lines else f"Document: {filename}."
+
+        prompt = f"""You are the Study Studio Intelligence Generator for Atlas.
+Analyze the following document tree outline and executive dossier to generate high-quality educational study materials:
+- Exactly 5 Multiple Choice Questions (MCQs)
+- Exactly 5 Active-Recall Flashcards
+
+DOCUMENT: {filename}
+
+DOSSIER OVERVIEW:
+{dossier_str}
+
+SECTION OUTLINE:
+{outline_str}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OUTPUT REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Return ONLY a valid JSON object matching this schema:
+{{
+  "mcqs": [
+    {{
+      "id": "mcq_1",
+      "question": "Question text here?",
+      "options": ["A) Choice 1", "B) Choice 2", "C) Choice 3", "D) Choice 4"],
+      "answer": "A) Choice 1",
+      "explanation": "Clear explanation of why this choice is correct based on the document.",
+      "citation": "(Section: \\"Section Title\\", Page: X)"
+    }}
+  ],
+  "flashcards": [
+    {{
+      "id": "card_1",
+      "question": "Front of card: Key concept, term, or question?",
+      "answer": "Back of card: Accurate, concise definition or answer.",
+      "explanation": "Supporting explanation or insight.",
+      "citation": "(Section: \\"Section Title\\", Page: X)"
+    }}
+  ]
+}}
+
+CRITICAL RULES:
+1. Every MCQ MUST have exactly 4 choices prefixed with A), B), C), D).
+2. The answer field MUST match one of the options verbatim.
+3. Every single MCQ and Flashcard MUST include an exact citation in the format: (Section: "Exact Section Name", Page: X).
+4. Do not wrap the JSON in Markdown backticks. Return raw JSON object.
+"""
+
+        raw_result = ""
+        hf_failed = False
+        if not self.hf_exhausted:
+            try:
+                resp = await self.client.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=self.chat_model,
+                    temperature=0.3,
+                    max_tokens=2200,
+                )
+                raw_result = resp.choices[0].message.content or ""
+            except Exception as e:
+                self._is_hf_exhausted(e)
+                hf_failed = True
+                app_logger.warning(f"HF quiz generation failed ({e}). Checking Groq fallback...")
+
+        if (self.hf_exhausted or hf_failed) and self.groq_client:
+            try:
+                groq_resp = await self.groq_client.chat.completions.create(
+                    model=self.groq_chat_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                    max_tokens=2200,
+                )
+                raw_result = groq_resp.choices[0].message.content or ""
+            except Exception as ge:
+                app_logger.error(f"Groq quiz generation fallback failed: {ge}")
+
+        data = self._extract_json(raw_result)
+        mcqs = data.get("mcqs", []) if isinstance(data, dict) else []
+        flashcards = data.get("flashcards", []) if isinstance(data, dict) else []
+
+        # Validate and supplement with deterministic fallbacks if needed
+        def build_deterministic_fallback():
+            items_mcqs = []
+            items_cards = []
+            pool = sections_sample if sections_sample else [{"title": "General Overview", "page": 1, "summary": "Covers document foundations."}]
+            
+            # Fill MCQs up to 5
+            for i in range(len(mcqs), 5):
+                sec = pool[i % len(pool)]
+                t = sec["title"]
+                p = sec["page"]
+                s = sec["summary"] or f"Core insights from {t}."
+                items_mcqs.append({
+                    "id": f"mcq_{i+1}",
+                    "question": f"Which core topic or finding is discussed in {t}?",
+                    "options": [
+                        f"A) {s[:80]}",
+                        f"B) Random irrelevant claim unrelated to {filename}",
+                        f"C) Outdated baseline methods prior to {filename}",
+                        f"D) None of the above"
+                    ],
+                    "answer": f"A) {s[:80]}",
+                    "explanation": f"According to {t} on page {p}, {s}",
+                    "citation": f'(Section: "{t}", Page: {p})'
+                })
+
+            # Fill Flashcards up to 5
+            for j in range(len(flashcards), 5):
+                sec = pool[j % len(pool)]
+                t = sec["title"]
+                p = sec["page"]
+                s = sec["summary"] or f"Key findings in {t}."
+                items_cards.append({
+                    "id": f"card_{j+1}",
+                    "question": f"What is the significance of {t} in {filename}?",
+                    "answer": s,
+                    "explanation": f"Document section {t} on page {p} details these findings.",
+                    "citation": f'(Section: "{t}", Page: {p})'
+                })
+            return items_mcqs, items_cards
+
+        fb_mcqs, fb_cards = build_deterministic_fallback()
+        final_mcqs = (mcqs + fb_mcqs)[:5]
+        final_flashcards = (flashcards + fb_cards)[:5]
+
+        # Ensure every item has a citation and exactly 4 options
+        for idx, m in enumerate(final_mcqs):
+            if "options" in m and isinstance(m["options"], list):
+                m["options"] = m["options"][:4]
+                letters = ["A)", "B)", "C)", "D)"]
+                while len(m["options"]) < 4:
+                    m["options"].append(f"{letters[len(m['options'])]} None of the above")
+            else:
+                m["options"] = ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"]
+
+            if m.get("answer") not in m["options"]:
+                matched = next((opt for opt in m["options"] if str(m.get("answer", "")) in opt or opt.startswith(str(m.get("answer", ""))[:2])), None)
+                m["answer"] = matched if matched else m["options"][0]
+
+            if not m.get("citation"):
+                sec = sections_sample[idx % len(sections_sample)] if sections_sample else {"title": "Overview", "page": 1}
+                m["citation"] = f'(Section: "{sec["title"]}", Page: {sec["page"]})'
+
+        for idx, c in enumerate(final_flashcards):
+            if not c.get("citation"):
+                sec = sections_sample[idx % len(sections_sample)] if sections_sample else {"title": "Overview", "page": 1}
+                c["citation"] = f'(Section: "{sec["title"]}", Page: {sec["page"]})'
+
+        return {
+            "mcqs": final_mcqs,
+            "flashcards": final_flashcards,
+        }
