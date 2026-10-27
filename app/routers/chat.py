@@ -270,12 +270,31 @@ async def ask_question(
                 # Mode D: Pure conversational AI assistant with FastMCP Web Search, arXiv academic research, & workspace collective knowledge
                 web_results = None
                 arxiv_results = None
-                greeting_triggers = [
-                    "أهلا", "أهلاً", "مرحبا", "مرحباً", "سلام", "ازيك", "صباح الخير", "مساء الخير",
-                    "من أنت", "ما اسمك", "مين انت", "hello", "hi", "hey", "who are you", "what is your name"
+                
+                # Conversational chit-chat, greetings, check-ins, and reactions
+                conversational_patterns = [
+                    "بقولك", "بقول لك", "معاك", "يا باشا", "يا صاحبي", "يا زميلي", "يا برو", "سامعني",
+                    "انت هنا", "انت معايا", "ممكن سؤال", "عايز اسالك", "عايز اسألك", "اسمعني", "الو",
+                    "هلا", "مرحبا", "مرحب", "سلام", "سلام عليكم", "السلام عليكم", "صباح الخير", "مساء الخير",
+                    "ازيك", "عامل ايه", "اخبارك", "مين انت", "من انت", "عرفني بنفسك", "انت مين",
+                    "ما اسمك", "اسمك ايه", "بتعمل ايه", "تقدر تعمل ايه", "اي دا", "ايه ده", "اي دا يعم",
+                    "يا عم", "يا راجل", "طب بقولك", "طب اسمع", "شكرا", "شكراً", "تسلم", "الله يخليك",
+                    "عفوا", "تمام", "ماشي", "اوك", "اوكي", "حلو", "جميل", "رائع", "حصل خير", "فهمت",
+                    "واضح", "خلاص", "تمام كدا", "hello", "hi", "hey", "who are you", "what is your name",
+                    "what can you do", "thanks", "thank you", "ok", "okay", "listen", "can you hear me",
+                    "are you there", "good morning", "good evening", "how are you", "what's up", "sup",
+                    "yo", "cool", "got it", "understood", "alright", "tell me"
                 ]
                 q_strip = request.query.strip().lower()
-                is_simple_greeting = len(q_strip) < 25 and any(g in q_strip for g in greeting_triggers)
+                cleaned_q = re.sub(r'[\?!.,;:\-_—~#@$%^&*()،؟]', '', q_strip).strip()
+                
+                is_simple_greeting = (
+                    cleaned_q in conversational_patterns
+                    or (len(cleaned_q) <= 35 and any(cleaned_q.startswith(p) for p in [
+                        "بقولك", "بقول لك", "ازيك", "عامل ايه", "سلام", "مرحبا", "الو", "هلا", "يا باشا",
+                        "يا صاحبي", "مين انت", "من انت", "صباح الخير", "مساء الخير", "شكرا", "تمام", "اي دا", "ايه ده"
+                    ]))
+                )
 
                 if not is_simple_greeting:
                     import json
