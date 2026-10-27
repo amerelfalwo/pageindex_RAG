@@ -12,14 +12,17 @@ Provides:
 import ast
 import asyncio
 import html
+import ipaddress
 import math
 import operator
+import os
 import re
+import socket
 import statistics
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import httpx
 from utils.logger import app_logger
@@ -94,19 +97,94 @@ def clean_html_to_markdown(html_content: str, max_chars: int = 15000) -> Tuple[s
     return title, body_text
 
 
+MAX_REDIRECT_HOPS = 3
+DEFAULT_MAX_WEB_PAGE_BYTES = 2 * 1024 * 1024  # 2 MB
+
+
+def is_safe_ip_address(ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -> Tuple[bool, str]:
+    """Validates that an IP address is not internal, loopback, private, multicast, or reserved."""
+    if ip.is_loopback:
+        return False, "loopback address"
+    if ip.is_private:
+        return False, "private network address"
+    if ip.is_link_local:
+        return False, "link-local address"
+    if ip.is_multicast:
+        return False, "multicast address"
+    if ip.is_reserved:
+        return False, "reserved address"
+    if ip.is_unspecified:
+        return False, "unspecified address"
+
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.is_site_local:
+            return False, "site-local IPv6 address"
+        if ip in ipaddress.ip_network("fc00::/7"):
+            return False, "unique-local IPv6 address"
+
+    return True, ""
+
+
+async def validate_url_for_ssrf(url: str) -> Tuple[bool, str, Optional[urllib.parse.ParseResult]]:
+    """
+    Validates URL scheme and resolves DNS hostnames to verify that all target
+    IP addresses are public, rejecting internal/private/cloud-metadata networks.
+    """
+    if not url:
+        return False, "URL cannot be empty.", None
+
+    try:
+        parsed = urllib.parse.urlparse(url.strip())
+    except Exception as e:
+        return False, f"Invalid URL structure: {e}", None
+
+    scheme = parsed.scheme.lower()
+    if scheme not in ("http", "https"):
+        return False, f"Invalid URL scheme '{scheme}'. Only http:// and https:// are permitted.", parsed
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "URL does not contain a valid hostname.", parsed
+
+    # Attempt to resolve IP addresses for hostname
+    loop = asyncio.get_running_loop()
+    try:
+        addr_info = await loop.getaddrinfo(hostname, None)
+    except Exception as dns_err:
+        return False, f"DNS resolution failed for '{hostname}': {dns_err}", parsed
+
+    if not addr_info:
+        return False, f"Could not resolve host '{hostname}'.", parsed
+
+    for info in addr_info:
+        ip_str = info[4][0]
+        try:
+            ip_obj = ipaddress.ip_address(ip_str)
+            is_safe, reason = is_safe_ip_address(ip_obj)
+            if not is_safe:
+                return (
+                    False,
+                    f"Access to '{hostname}' ({ip_str}) rejected: {reason} (SSRF protection).",
+                    parsed,
+                )
+        except ValueError:
+            return False, f"Invalid IP address resolved: {ip_str}", parsed
+
+    return True, "", parsed
+
+
 async def fetch_webpage_markdown(
     url: str,
     max_chars: int = 15000,
     timeout: float = 6.0,
 ) -> Dict[str, Any]:
-    """Fetch URL with a strict timeout and return clean markdown text."""
-    if not url or not url.startswith(("http://", "https://")):
-        return {
-            "status": "error",
-            "url": url,
-            "error": "Invalid URL. URL must start with http:// or https://",
-            "content": "",
-        }
+    """Fetch URL with strict SSRF protection, manual redirects (max 3 hops), body limit, and clean markdown."""
+    t_start = time.monotonic()
+    raw_max_bytes = os.getenv("MAX_WEB_PAGE_BYTES")
+    try:
+        max_bytes = int(raw_max_bytes) if raw_max_bytes else DEFAULT_MAX_WEB_PAGE_BYTES
+    except ValueError:
+        max_bytes = DEFAULT_MAX_WEB_PAGE_BYTES
 
     headers = {
         "User-Agent": (
@@ -117,19 +195,120 @@ async def fetch_webpage_markdown(
         "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
     }
 
-    t_start = time.monotonic()
+    current_url = url.strip() if url else ""
+    hops = 0
+    raw_html = ""
+
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=headers) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            raw_html = resp.text
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers=headers) as client:
+            while True:
+                # 1. Scheme + SSRF DNS validation on current_url
+                is_safe, err_msg, _ = await validate_url_for_ssrf(current_url)
+                if not is_safe:
+                    elapsed = round(time.monotonic() - t_start, 2)
+                    app_logger.warning(f"[WebReader] SSRF blocked target '{current_url}': {err_msg}")
+                    return {
+                        "status": "error",
+                        "url": current_url,
+                        "error": err_msg,
+                        "content": "",
+                        "duration": elapsed,
+                    }
+
+                # 2. Issue streaming request
+                req = client.build_request("GET", current_url)
+                resp = await client.send(req, stream=True)
+
+                try:
+                    # 3. Check for redirects (3xx)
+                    if 300 <= resp.status_code < 400:
+                        hops += 1
+                        if hops > MAX_REDIRECT_HOPS:
+                            await resp.aclose()
+                            elapsed = round(time.monotonic() - t_start, 2)
+                            return {
+                                "status": "error",
+                                "url": current_url,
+                                "error": f"Too many redirects (exceeded limit of {MAX_REDIRECT_HOPS} hops).",
+                                "content": "",
+                                "duration": elapsed,
+                            }
+
+                        location = resp.headers.get("location")
+                        await resp.aclose()
+                        if not location:
+                            elapsed = round(time.monotonic() - t_start, 2)
+                            return {
+                                "status": "error",
+                                "url": current_url,
+                                "error": f"HTTP {resp.status_code} redirect missing Location header.",
+                                "content": "",
+                                "duration": elapsed,
+                            }
+
+                        # Resolve relative redirect against current_url
+                        current_url = urllib.parse.urljoin(current_url, location)
+                        continue
+
+                    # 4. Check HTTP status code
+                    if resp.status_code >= 400:
+                        await resp.aclose()
+                        elapsed = round(time.monotonic() - t_start, 2)
+                        return {
+                            "status": "error",
+                            "url": current_url,
+                            "error": f"HTTP {resp.status_code}: {resp.reason_phrase}",
+                            "content": "",
+                            "duration": elapsed,
+                        }
+
+                    # 5. Check Content-Length if reported
+                    content_len_hdr = resp.headers.get("content-length")
+                    if content_len_hdr:
+                        try:
+                            if int(content_len_hdr) > max_bytes:
+                                await resp.aclose()
+                                elapsed = round(time.monotonic() - t_start, 2)
+                                return {
+                                    "status": "error",
+                                    "url": current_url,
+                                    "error": f"Response size exceeds maximum limit of {max_bytes} bytes.",
+                                    "content": "",
+                                    "duration": elapsed,
+                                }
+                        except ValueError:
+                            pass
+
+                    # 6. Stream chunks with size enforcement
+                    content_chunks = []
+                    total_bytes = 0
+                    async for chunk in resp.aiter_bytes():
+                        total_bytes += len(chunk)
+                        if total_bytes > max_bytes:
+                            await resp.aclose()
+                            elapsed = round(time.monotonic() - t_start, 2)
+                            return {
+                                "status": "error",
+                                "url": current_url,
+                                "error": f"Response exceeded maximum limit of {max_bytes} bytes during download.",
+                                "content": "",
+                                "duration": elapsed,
+                            }
+                        content_chunks.append(chunk)
+
+                    raw_bytes = b"".join(content_chunks)
+                    encoding = resp.encoding or "utf-8"
+                    raw_html = raw_bytes.decode(encoding, errors="replace")
+                    break
+                finally:
+                    await resp.aclose()
 
         title, clean_text = clean_html_to_markdown(raw_html, max_chars=max_chars)
         elapsed = round(time.monotonic() - t_start, 2)
-        app_logger.info(f"[WebReader] Successfully read {url} ({len(clean_text)} chars in {elapsed}s)")
+        app_logger.info(f"[WebReader] Successfully read {url} ({len(clean_text)} chars in {elapsed}s, {hops} redirects)")
         return {
             "status": "success",
-            "url": url,
+            "url": current_url,
             "title": title,
             "content": clean_text,
             "characters": len(clean_text),
@@ -140,7 +319,7 @@ async def fetch_webpage_markdown(
         app_logger.warning(f"[WebReader] Timeout ({timeout}s) fetching URL: {url}")
         return {
             "status": "error",
-            "url": url,
+            "url": current_url,
             "error": f"Request timed out after {timeout} seconds.",
             "content": "",
             "duration": elapsed,
@@ -150,7 +329,7 @@ async def fetch_webpage_markdown(
         app_logger.warning(f"[WebReader] Error reading {url}: {e}")
         return {
             "status": "error",
-            "url": url,
+            "url": current_url,
             "error": str(e),
             "content": "",
             "duration": elapsed,
