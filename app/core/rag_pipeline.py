@@ -637,30 +637,29 @@ class VectorlessRAG:
             yield f'<!--STAGE:{{"stage":"retrieved","duration":{t_retrieval:.2f},"nodes":{len(all_selected_nodes)},"docs":{len(docs)}}}-->\n'
 
             # Determine contextual document topic for web and academic queries
+            GENERIC_HEADINGS = {"abstract", "introduction", "conclusion", "references", "overview", "background", "related work", "preliminaries", "methods"}
             doc_topic = None
-            if all_selected_nodes:
+
+            # 1. Prefer document tree root title (which is the document title)
+            if docs:
+                for dobj in docs:
+                    dt = (dobj.get("tree") or [{}])[0].get("title", "")
+                    clean_dt = re.sub(r'[\(\[\{].*?[\)\]\}]', '', dt).strip()
+                    if clean_dt and len(clean_dt) > 4 and clean_dt.lower() not in GENERIC_HEADINGS and not clean_dt.lower().startswith("section"):
+                        doc_topic = clean_dt
+                        break
+
+            # 2. Fallback to non-generic section titles
+            if not doc_topic and all_selected_nodes:
                 for n in all_selected_nodes:
                     t = n.get("title", "")
                     clean_t = re.sub(r'^(?:\d+[\.\)]*\s*|Abstract\b|Introduction\b)', '', t, flags=re.IGNORECASE).strip()
                     clean_t = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_t).strip()
-                    if len(clean_t) > 4:
+                    if len(clean_t) > 4 and clean_t.lower() not in GENERIC_HEADINGS:
                         doc_topic = clean_t
                         break
-            if not doc_topic and docs:
-                for dobj in docs:
-                    dt = (dobj.get("tree") or [{}])[0].get("title", "")
-                    if dt and len(dt) > 4 and not dt.lower().startswith("section"):
-                        doc_topic = dt
-                        break
-                    sections = dobj.get("flat_sections") or []
-                    for s in sections[:3]:
-                        st = s.get("title", "")
-                        clean_st = re.sub(r'^(?:\d+[\.\)]*\s*|Abstract\b|Introduction\b)', '', st, flags=re.IGNORECASE).strip()
-                        if len(clean_st) > 4:
-                            doc_topic = clean_st
-                            break
-                    if doc_topic:
-                        break
+
+            # 3. Fallback to document filename
             if not doc_topic and doc_names_str and not doc_names_str.startswith("doc_"):
                 doc_topic = re.sub(r'\.pdf$', '', doc_names_str)
 
