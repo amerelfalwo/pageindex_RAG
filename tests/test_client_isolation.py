@@ -160,3 +160,39 @@ def test_document_and_memory_isolation_between_clients(client):
     del_a = client.delete(f"/documents/{doc_a_id}", headers=headers_a)
     assert del_a.status_code == 200
 
+
+def test_delete_all_documents_bulk_endpoint(client):
+    """Verifies that DELETE /documents deletes all documents belonging to the requesting client."""
+    from core.dependencies import get_storage
+    storage = get_storage()
+
+    client_c = str(uuid.uuid4())
+    client_d = str(uuid.uuid4())
+    headers_c = {"X-Client-ID": client_c}
+    headers_d = {"X-Client-ID": client_d}
+
+    doc_c1 = f"doc_c1_{uuid.uuid4().hex[:8]}"
+    doc_c2 = f"doc_c2_{uuid.uuid4().hex[:8]}"
+    doc_d = f"doc_d_{uuid.uuid4().hex[:8]}"
+
+    storage.create_document(doc_id=doc_c1, filename="doc1.pdf", owner_id=client_c)
+    storage.create_document(doc_id=doc_c2, filename="doc2.pdf", owner_id=client_c)
+    storage.create_document(doc_id=doc_d, filename="doc_d.pdf", owner_id=client_d)
+
+    # Client C deletes all
+    del_res = client.delete("/documents", headers=headers_c)
+    assert del_res.status_code == 200
+    data = del_res.json()
+    assert data["count"] >= 2
+
+    # Client C documents list is now empty of c1 and c2
+    docs_c = client.get("/documents", headers=headers_c).json()["documents"]
+    assert not any(d["doc_id"] in [doc_c1, doc_c2] for d in docs_c)
+
+    # Client D document is still intact
+    docs_d = client.get("/documents", headers=headers_d).json()["documents"]
+    assert any(d["doc_id"] == doc_d for d in docs_d)
+
+    # Cleanup Client D
+    client.delete(f"/documents/{doc_d}", headers=headers_d)
+

@@ -455,7 +455,7 @@ class PostgresDB:
         with self._conn() as conn:
             with conn.cursor() as cur:
                 if owner_id:
-                    cur.execute("SELECT doc_id FROM doc_meta WHERE doc_id = %s AND owner_id = %s", (doc_id, owner_id))
+                    cur.execute("SELECT doc_id FROM doc_meta WHERE doc_id = %s AND (owner_id = %s OR owner_id IS NULL)", (doc_id, owner_id))
                     if not cur.fetchone():
                         return False
                 cur.execute("DELETE FROM doc_meta WHERE doc_id = %s", (doc_id,))

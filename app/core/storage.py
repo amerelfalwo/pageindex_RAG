@@ -6,6 +6,7 @@ import base64
 from typing import Dict, List, Optional, Any
 
 from core.persistent_db import persistent_db
+from utils.logger import app_logger
 
 _BASE_DATA = "/data" if (os.path.exists("/data") and os.access("/data", os.W_OK)) else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 CACHE_DIR = os.path.join(_BASE_DATA, "index_cache")
@@ -436,7 +437,7 @@ class MemoryStorage:
             if owner_id is not None:
                 if doc.get("owner_id") is None and db_meta:
                     doc["owner_id"] = db_meta.get("owner_id")
-                if doc.get("owner_id") != owner_id:
+                if doc.get("owner_id") is not None and doc.get("owner_id") != owner_id:
                     return None
             if doc.get("status") == "ready" and doc.get("tree"):
                 return doc
@@ -572,9 +573,31 @@ class MemoryStorage:
         self._trees.pop(doc_id, None)
         self._node_maps.pop(doc_id, None)
         self._flat_sections.pop(doc_id, None)
-        self._active_tasks.pop(doc_id, None)
+        task = self._active_tasks.pop(doc_id, None)
+        if task and hasattr(task, "cancel") and not task.done():
+            task.cancel()
+        for h, did in list(self._hash_to_doc_id.items()):
+            if did == doc_id:
+                self._hash_to_doc_id.pop(h, None)
         persistent_db.delete_doc_index(doc_id)
         return persistent_db.delete_doc(doc_id, owner_id=owner_id)
+
+    def delete_all_documents(self, owner_id: Optional[str] = None) -> int:
+        docs = self.list_documents(owner_id=owner_id)
+        count = 0
+        for doc in docs:
+            doc_id = doc.get("doc_id") or doc.get("document_id")
+            if not doc_id:
+                continue
+            file_path = doc.get("file_path")
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    app_logger.warning(f"Could not remove document file {file_path}: {e}")
+            if self.delete_document(doc_id, owner_id=owner_id):
+                count += 1
+        return count
 
 
     # ──────────────────────────────────────────────────────────────────────

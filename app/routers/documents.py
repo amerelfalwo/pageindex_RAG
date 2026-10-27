@@ -460,6 +460,17 @@ async def get_document_tree(
     }
 
 
+@router.delete("/documents")
+async def delete_all_documents(
+    storage: MemoryStorage = Depends(get_storage),
+    client_id: str = Depends(get_client_id),
+):
+    """Permanently delete all documents, cached indices, and files for current client."""
+    count = storage.delete_all_documents(owner_id=client_id)
+    app_logger.info(f"Deleted all {count} documents for client {client_id}")
+    return {"message": f"Successfully deleted {count} documents", "count": count}
+
+
 @router.delete("/documents/{document_id}")
 async def delete_document(
     document_id: str,
