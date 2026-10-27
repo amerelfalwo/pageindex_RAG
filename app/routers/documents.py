@@ -59,6 +59,13 @@ async def run_background_indexing(
         # 3. Store in-memory acceleration indexes
         storage.set_node_map(doc_id, node_map)
         storage.set_flat_sections(doc_id, flat_sections)
+        try:
+            from core.bm25 import BM25NodeIndex
+            doc_nodes = [node_map[s["node_id"]] for s in flat_sections if s.get("node_id") in node_map]
+            if doc_nodes:
+                storage.set_bm25_index(doc_id, BM25NodeIndex(doc_nodes))
+        except Exception as bm_ex:
+            app_logger.warning(f"Could not pre-warm BM25 index for {doc_id}: {bm_ex}")
 
         total_duration = round(time.monotonic() - t_start, 2)
 

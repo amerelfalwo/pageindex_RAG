@@ -1,13 +1,15 @@
 import asyncio
 import re
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from utils.logger import app_logger
+from core.bm25 import BM25NodeIndex
 
 
 class VectorlessRAG:
     def __init__(self, llm_service):
         self.llm = llm_service
+        self._bm25_cache: Dict[str, BM25NodeIndex] = {}
 
     @staticmethod
     def _parse_paragraphs_with_page_markers(text: str, default_page: Any) -> List[Dict[str, Any]]:
@@ -184,6 +186,74 @@ class VectorlessRAG:
 
         return pruned_nodes
 
+    @staticmethod
+    def _get_doc_nodes(doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extracts flattened node dictionaries containing node_id, title, summary, text."""
+        node_map = doc.get("node_map") or {}
+        flat_sections = doc.get("flat_sections") or []
+        if flat_sections and node_map:
+            nodes = [node_map[s["node_id"]] for s in flat_sections if s.get("node_id") in node_map]
+            if nodes:
+                return nodes
+        if node_map:
+            return list(node_map.values())
+
+        # Collect from tree recursively
+        tree = doc.get("tree") or []
+        collected = []
+        def collect(items):
+            for it in items:
+                if isinstance(it, dict):
+                    collected.append(it)
+                    if it.get("nodes"):
+                        collect(it["nodes"])
+        collect(tree)
+        return collected
+
+    @staticmethod
+    def reciprocal_rank_fusion(
+        ranked_lists: List[Tuple[List[str], float]],
+        rrf_k: int = 60,
+        top_k: int = 4,
+    ) -> List[Tuple[str, float]]:
+        """
+        Weighted Reciprocal Rank Fusion (RRF):
+        Combines multiple ranked lists into a single consensus ranking.
+        score(d) = sum_L (w_L / (rrf_k + rank_L(d)))
+        """
+        rrf_scores: Dict[str, float] = {}
+        for items, weight in ranked_lists:
+            for rank, item_id in enumerate(items, start=1):
+                if not item_id:
+                    continue
+                rrf_scores[item_id] = rrf_scores.get(item_id, 0.0) + (weight / (rrf_k + rank))
+
+        sorted_items = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+        return sorted_items[:top_k]
+
+    def bm25_search_nodes(
+        self,
+        query: str,
+        nodes: List[Dict[str, Any]],
+        doc_id: Optional[str] = None,
+        top_k: int = 5,
+    ) -> Tuple[List[Tuple[str, float]], float]:
+        """
+        Executes Okapi BM25 lexical search with in-memory index caching.
+        Returns (matches, latency_ms).
+        """
+        t0 = time.monotonic()
+        cache_key = doc_id or str(id(nodes))
+        index = self._bm25_cache.get(cache_key)
+        if index is None or index.N != len(nodes):
+            index = BM25NodeIndex(nodes)
+            if doc_id:
+                self._bm25_cache[cache_key] = index
+
+        matches = index.search(query, top_k=top_k)
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        return matches, elapsed_ms
+
     async def answer_multi_doc_query_stream(
         self,
         query: str,
@@ -214,12 +284,39 @@ class VectorlessRAG:
                 node_map = doc.get("node_map")
                 flat_sections = doc.get("flat_sections")
                 doc_name = doc.get("filename") or "Document"
+                doc_id = doc.get("doc_id")
 
-                search_res = await self.llm.llm_tree_search(
+                doc_nodes = self._get_doc_nodes(doc)
+
+                # Parallel Retrieval: LLM Hierarchical Tree Search + Lexical BM25
+                async def run_bm25():
+                    return self.bm25_search_nodes(query, doc_nodes, doc_id=doc_id, top_k=5)
+
+                llm_task = self.llm.llm_tree_search(
                     query, tree, chat_history=chat_history, flat_sections=flat_sections
                 )
-                node_ids = search_res.get("node_list", [])
-                nodes = self.llm.find_nodes_by_ids(tree, node_ids, node_map=node_map)
+                bm25_task = run_bm25()
+
+                search_res, (bm25_matches, bm25_latency) = await asyncio.gather(
+                    llm_task, bm25_task, return_exceptions=False
+                )
+
+                llm_node_ids = search_res.get("node_list", [])
+                bm25_node_ids = [nid for nid, sc in bm25_matches if sc > 0]
+
+                # Weighted Reciprocal Rank Fusion: 0.6 LLM Tree Search, 0.4 BM25
+                fused_results = self.reciprocal_rank_fusion(
+                    ranked_lists=[(llm_node_ids, 0.6), (bm25_node_ids, 0.4)],
+                    top_k=4 if deep_analysis else 3,
+                )
+                fused_node_ids = [nid for nid, _ in fused_results]
+
+                app_logger.info(
+                    f"[HYBRID-RETRIEVAL] doc='{doc_name}' llm_nodes={llm_node_ids} "
+                    f"bm25_nodes={bm25_node_ids} fused={fused_node_ids} bm25_latency={bm25_latency:.2f}ms"
+                )
+
+                nodes = self.llm.find_nodes_by_ids(tree, fused_node_ids, node_map=node_map)
 
                 # Fallback to leading sections for overview/comparative queries if no nodes matched
                 if not nodes:
@@ -247,7 +344,7 @@ class VectorlessRAG:
                     n_copy = dict(n)
                     n_copy["doc_name"] = doc_name
                     n_copy["filename"] = doc_name
-                    n_copy["doc_id"] = doc.get("doc_id")
+                    n_copy["doc_id"] = doc_id
                     tagged_nodes.append(n_copy)
                 return tagged_nodes
 

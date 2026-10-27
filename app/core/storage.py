@@ -25,6 +25,7 @@ class MemoryStorage:
         self._documents: Dict[str, Dict[str, Any]] = {}
         self._node_maps: Dict[str, Dict[str, Any]] = {}
         self._flat_sections: Dict[str, List[Dict[str, Any]]] = {}
+        self._bm25_indices: Dict[str, Any] = {}
         # hash → doc_id quick lookup (in-memory only; rebuilt from DB on demand)
         self._hash_to_doc_id: Dict[str, str] = {}
         # active background indexing tasks
@@ -174,6 +175,12 @@ class MemoryStorage:
 
     def set_flat_sections(self, doc_id: str, sections: List[Dict[str, Any]]) -> None:
         self._flat_sections[doc_id] = sections
+
+    def get_bm25_index(self, doc_id: str) -> Optional[Any]:
+        return self._bm25_indices.get(doc_id)
+
+    def set_bm25_index(self, doc_id: str, index: Any) -> None:
+        self._bm25_indices[doc_id] = index
 
     # ──────────────────────────────────────────────────────────────────────
     # Document lifecycle
