@@ -48,8 +48,8 @@ class LLMService:
         # Groq Fallback Client (used when Hugging Face tokens/credits are depleted)
         self.groq_api_key = os.getenv("GROQ_API_KEY")
         self.groq_client: Optional[AsyncOpenAI] = None
-        self.groq_chat_model = os.getenv("GROQ_CHAT_MODEL", "qwen/qwen3.8-27b")
-        self.groq_retrieval_model = os.getenv("GROQ_RETRIEVAL_MODEL", "qwen/qwen3.8-27b")
+        self.groq_chat_model = os.getenv("GROQ_CHAT_MODEL", "openai/gpt-oss-120b")
+        self.groq_retrieval_model = os.getenv("GROQ_RETRIEVAL_MODEL", "openai/gpt-oss-120b")
 
         if self.groq_api_key:
             self.groq_client = AsyncOpenAI(
@@ -111,8 +111,16 @@ class LLMService:
 
         try:
             return json.loads(text)
-        except json.JSONDecodeError:
-            app_logger.warning(f"Failed to decode JSON from: {raw_text}. Falling back to empty object.")
+        except Exception:
+            try:
+                # Attempt to close open braces/brackets if cut off
+                open_braces = text.count("{") - text.count("}")
+                open_brackets = text.count("[") - text.count("]")
+                repaired = text + ("]" * max(0, open_brackets)) + ("}" * max(0, open_braces))
+                return json.loads(repaired)
+            except Exception:
+                pass
+            app_logger.warning(f"Failed to decode JSON from: {raw_text[:200]}. Falling back to empty object.")
             return {}
 
     def _normalize_tree(self, tree: object) -> list:
@@ -1483,10 +1491,8 @@ ACADEMIC CITATION RULES:
 
         outline_str = "\n".join(outline_lines[:15]) if outline_lines else f"Document: {filename}."
 
-        prompt = f"""You are the Study Studio Intelligence Generator for Atlas.
-Analyze the following document tree outline and executive dossier to generate high-quality educational study materials:
-- Exactly 5 Multiple Choice Questions (MCQs)
-- Exactly 5 Active-Recall Flashcards
+        mcq_prompt = f"""You are the Study Studio Intelligence Generator for Atlas.
+Analyze the following document sections and executive dossier to generate exactly 5 Multiple Choice Questions (MCQs) testing understanding of this specific document.
 
 DOCUMENT: {filename}
 
@@ -1496,29 +1502,17 @@ DOSSIER OVERVIEW:
 SECTION OUTLINE:
 {outline_str}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OUTPUT REQUIREMENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Return ONLY a valid JSON object matching this schema:
+OUTPUT REQUIREMENTS:
+Return ONLY valid JSON matching this schema:
 {{
   "mcqs": [
     {{
       "id": "mcq_1",
-      "question": "Question text here?",
+      "question": "Question text testing a core concept from the document?",
       "options": ["A) Choice 1", "B) Choice 2", "C) Choice 3", "D) Choice 4"],
       "answer": "A) Choice 1",
-      "explanation": "Clear explanation of why this choice is correct based on the document.",
-      "evidence_text": "Exact 1-2 sentence verbatim excerpt from the document content supporting this answer.",
-      "citation": "(Section: \\"Section Title\\", Page: X)"
-    }}
-  ],
-  "flashcards": [
-    {{
-      "id": "card_1",
-      "question": "Front of card: Key concept, term, or question?",
-      "answer": "Back of card: Accurate, concise definition or answer.",
-      "explanation": "Supporting explanation or insight.",
-      "evidence_text": "Direct excerpt or definition from the document text.",
+      "explanation": "Clear 1-sentence explanation grounded in the text.",
+      "evidence_text": "Exact 1-2 sentence verbatim excerpt from the document.",
       "citation": "(Section: \\"Section Title\\", Page: X)"
     }}
   ]
@@ -1527,43 +1521,90 @@ Return ONLY a valid JSON object matching this schema:
 CRITICAL RULES:
 1. Every MCQ MUST have exactly 4 choices prefixed with A), B), C), D).
 2. The answer field MUST match one of the options verbatim.
-3. Every item MUST include 'evidence_text' containing the actual sentence/excerpt from the document that verifies the answer, plus the exact citation: (Section: "Exact Section Name", Page: X).
-4. Do not wrap the JSON in Markdown backticks. Return raw JSON object.
+3. Keep explanation concise (1-2 sentences).
+4. Do not wrap in markdown or markdown backticks. Return raw JSON.
 """
 
-        raw_result = ""
-        hf_failed = False
-        if not self.hf_exhausted:
-            try:
-                resp = await self.client.chat_completion(
-                    messages=[{"role": "user", "content": prompt}],
-                    model=self.chat_model,
-                    temperature=0.3,
-                    max_tokens=2200,
-                )
-                raw_result = resp.choices[0].message.content or ""
-            except Exception as e:
-                self._is_hf_exhausted(e)
-                hf_failed = True
-                app_logger.warning(f"HF quiz generation failed ({e}). Checking Groq fallback...")
+        flashcard_prompt = f"""You are the Study Studio Intelligence Generator for Atlas.
+Analyze the following document sections and executive dossier to generate exactly 5 Active-Recall Flashcards testing understanding of this specific document.
 
-        if (self.hf_exhausted or hf_failed) and self.groq_client:
-            try:
-                groq_resp = await self.groq_client.chat.completions.create(
-                    model=self.groq_chat_model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.3,
-                    max_tokens=2200,
-                )
-                raw_result = groq_resp.choices[0].message.content or ""
-            except Exception as ge:
-                app_logger.error(f"Groq quiz generation fallback failed: {ge}")
+DOCUMENT: {filename}
 
-        data = self._extract_json(raw_result)
-        mcqs = data.get("mcqs", []) if isinstance(data, dict) else []
-        flashcards = data.get("flashcards", []) if isinstance(data, dict) else []
+DOSSIER OVERVIEW:
+{dossier_str}
 
-        # Validate and supplement with deterministic fallbacks if needed
+SECTION OUTLINE:
+{outline_str}
+
+OUTPUT REQUIREMENTS:
+Return ONLY valid JSON matching this schema:
+{{
+  "flashcards": [
+    {{
+      "id": "card_1",
+      "question": "Front of card: Core concept, term, or question?",
+      "answer": "Back of card: Accurate concise definition or answer under 35 words.",
+      "explanation": "Supporting academic insight in 1 sentence.",
+      "evidence_text": "Exact verbatim sentence from the document.",
+      "citation": "(Section: \\"Section Title\\", Page: X)"
+    }}
+  ]
+}}
+
+CRITICAL RULES:
+1. Keep answers concise under 35 words.
+2. Do not wrap in markdown or markdown backticks. Return raw JSON.
+"""
+
+        async def execute_llm_call(prompt_text: str, max_tokens: int) -> str:
+            # 1. Try Hugging Face
+            if not self.hf_exhausted:
+                try:
+                    resp = await self.client.chat_completion(
+                        messages=[{"role": "user", "content": prompt_text}],
+                        model=self.chat_model,
+                        temperature=0.3,
+                        max_tokens=max_tokens,
+                    )
+                    out = resp.choices[0].message.content or ""
+                    if out.strip():
+                        return out
+                except Exception as e:
+                    self._is_hf_exhausted(e)
+                    app_logger.warning(f"HF call failed ({e}). Trying Groq fallback...")
+
+            # 2. Try Groq
+            if self.groq_client:
+                models_to_try = [self.groq_chat_model, "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
+                for candidate_model in dict.fromkeys(models_to_try):
+                    try:
+                        app_logger.info(f"[QUIZ-GEN] Running call via Groq ({candidate_model})...")
+                        groq_resp = await self.groq_client.chat.completions.create(
+                            model=candidate_model,
+                            messages=[{"role": "user", "content": prompt_text}],
+                            temperature=0.3,
+                            max_tokens=max_tokens,
+                        )
+                        out = groq_resp.choices[0].message.content or ""
+                        if out.strip():
+                            return out
+                    except Exception as ge:
+                        app_logger.error(f"Groq call failed on {candidate_model}: {ge}")
+            return ""
+
+        # Run MCQs and Flashcards in parallel for 2x speed and zero token truncation
+        raw_mcqs_str, raw_cards_str = await asyncio.gather(
+            execute_llm_call(mcq_prompt, 2400),
+            execute_llm_call(flashcard_prompt, 1800),
+        )
+
+        data_mcqs = self._extract_json(raw_mcqs_str)
+        data_cards = self._extract_json(raw_cards_str)
+
+        mcqs = data_mcqs.get("mcqs", []) if isinstance(data_mcqs, dict) else []
+        flashcards = data_cards.get("flashcards", []) if isinstance(data_cards, dict) else []
+
+        # Validate and supplement with grounded document fallback if needed
         def build_deterministic_fallback():
             items_mcqs = []
             items_cards = []
@@ -1575,17 +1616,27 @@ CRITICAL RULES:
                 t = sec["title"]
                 p = sec["page"]
                 s = sec["summary"] or f"Core insights from {t}."
+
+                distractors = []
+                for step in [1, 2, 3]:
+                    other_sec = pool[(i + step) % len(pool)]
+                    other_text = (other_sec.get("summary") or other_sec.get("title") or "").strip()
+                    if other_text and other_text != s and other_text not in distractors:
+                        distractors.append(other_text[:90])
+                while len(distractors) < 3:
+                    distractors.append(f"Framework and scope detailed in Section {(i + len(distractors) + 1)}")
+
                 items_mcqs.append({
                     "id": f"mcq_{i+1}",
-                    "question": f"Which core topic or finding is discussed in {t}?",
+                    "question": f"Which core concept or finding is established in section '{t}'?",
                     "options": [
-                        f"A) {s[:80]}",
-                        f"B) Random irrelevant claim unrelated to {filename}",
-                        f"C) Outdated baseline methods prior to {filename}",
-                        f"D) None of the above"
+                        f"A) {s[:90]}",
+                        f"B) {distractors[0]}",
+                        f"C) {distractors[1]}",
+                        f"D) {distractors[2]}"
                     ],
-                    "answer": f"A) {s[:80]}",
-                    "explanation": f"According to {t} on page {p}, {s}",
+                    "answer": f"A) {s[:90]}",
+                    "explanation": f"According to section '{t}' on page {p}, the document states: {s}",
                     "evidence_text": sec.get("text") or s,
                     "citation": f'(Section: "{t}", Page: {p})'
                 })
@@ -1598,13 +1649,16 @@ CRITICAL RULES:
                 s = sec["summary"] or f"Key findings in {t}."
                 items_cards.append({
                     "id": f"card_{j+1}",
-                    "question": f"What is the significance of {t} in {filename}?",
-                    "answer": s,
-                    "explanation": f"Document section {t} on page {p} details these findings.",
+                    "question": f"What is the key takeaway or principle defined in '{t}'?",
+                    "answer": s[:150],
+                    "explanation": f"Document section '{t}' on page {p} details these findings.",
                     "evidence_text": sec.get("text") or s,
                     "citation": f'(Section: "{t}", Page: {p})'
                 })
             return items_mcqs, items_cards
+
+
+
 
         fb_mcqs, fb_cards = build_deterministic_fallback()
         final_mcqs = (mcqs + fb_mcqs)[:5]
