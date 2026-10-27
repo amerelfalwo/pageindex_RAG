@@ -19,7 +19,11 @@ from utils.logger import app_logger
 # ── paths ──────────────────────────────────────────────────────────────────
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _APP_DIR = os.path.dirname(_THIS_DIR)
-DATA_DIR = "/data" if (os.path.exists("/data") and os.access("/data", os.W_OK)) else os.path.join(_APP_DIR, "data")
+custom_data_dir = os.getenv("ATLAS_DATA_DIR")
+if custom_data_dir:
+    DATA_DIR = custom_data_dir
+else:
+    DATA_DIR = "/data" if (os.path.exists("/data") and os.access("/data", os.W_OK)) else os.path.join(_APP_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "memory.db")
 os.makedirs(DATA_DIR, exist_ok=True)
 

@@ -11,6 +11,10 @@ from core.storage import MemoryStorage
 from core.dependencies import get_document_service, get_llm_service, get_storage
 from schemas.schemas import UploadResponse, DocumentStatusResponse
 from utils.logger import app_logger
+from core.persistent_db import DATA_DIR
+
+UPLOAD_DIR = os.getenv("ATLAS_UPLOAD_DIR") or os.path.join(DATA_DIR, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 router = APIRouter(tags=["Documents"])
 
@@ -183,8 +187,8 @@ async def upload_pdf(
 
     # Persist file to local disk
     doc_id = str(uuid.uuid4())
-    os.makedirs("data", exist_ok=True)
-    file_path = os.path.join("data", f"{doc_id}_{file.filename}")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(UPLOAD_DIR, f"{doc_id}_{file.filename}")
     with open(file_path, "wb") as buffer:
         buffer.write(contents)
 
