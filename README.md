@@ -30,7 +30,7 @@ pinned: false
 5. [Industry Benchmarks & Quantitative Evaluation (95 Questions)](#-industry-benchmarks--quantitative-evaluation-95-questions)
    - [Subsystem Health & Functional Audit (Table 1)](#subsystem-health--functional-audit-table-1)
    - [IEEE TKDE Research Benchmark — 80 Questions (Table 2)](#ieee-tkde-research-benchmark--80-questions-table-2)
-   - [FinanceBench SEC 10-K Benchmark — 15 Questions (Table 3)](#financebench-sec-10-k-benchmark--15-questions-table-3)
+   - [FinanceBench-style 10-K Sample — 15 Questions (Table 3)](#financebench-style-10-k-sample--15-questions-table-3)
 6. [Tech Stack](#-tech-stack)
 7. [API Endpoints Reference](#-api-endpoints-reference)
 8. [Environment Variables](#-environment-variables)
@@ -43,7 +43,7 @@ pinned: false
 **Atlas** redefines Document Intelligence and Retrieval-Augmented Generation (RAG) by completely eliminating vector embeddings, arbitrary chunking, and similarity drift. Instead of blindly slicing documents into 500-token chunks and computing cosine distance over a vector database, Atlas models documents as **Hierarchical Semantic Trees** (`PageIndex` + `PyMuPDF`).
 
 Every section, chapter, table, and footnote preserves its parent-child lineage and exact physical page coordinates. When a user queries the system:
-1. **Hybrid Retrieval**: Runs concurrent LLM outline tree search and pure lexical BM25 search in `< 2ms`.
+1. **Hybrid Retrieval**: Runs lexical BM25 search and weighted RRF fusion in ~2ms, while the LLM tree-search step adds model latency, achieving an end-to-end average query latency of 1.45s.
 2. **Nucleus Consensus (`top_p = 0.75`)**: Combines rankings via Weighted Reciprocal Rank Fusion (RRF: `0.6` Tree, `0.4` BM25) and applies temperature-scaled Softmax to dynamically isolate the minimal sufficient set of nodes (single-hop queries truncate to 1 node; multi-hop queries preserve 2 nodes).
 3. **Sub-Node Paragraph Pruning & Exact Inner-Page Pinning**: Filters long sections down to high-density paragraphs and pins citations to the exact `--- [PAGE X] ---` where evidence resides.
 4. **Fallback & Extended Research**: When out-of-document facts, arXiv papers, mathematical ratios, or YouTube lectures are needed, Atlas activates its built-in **Research & Study FastMCP Suite** with zero external API fees.
@@ -104,8 +104,8 @@ flowchart TB
 
     subgraph AI_Inference["🤖 Resilient Dual-Provider LLM Engine"]
         direction LR
-        HF_LLM["Hugging Face Serverless (Primary: Llama-3.1-8B-Instruct)"]
-        Groq_LLM["Groq Cloud API (Zero-Downtime Fallback: Qwen-3.8-27b)"]
+        HF_LLM["Hugging Face Serverless (Primary: meta-llama/Llama-3.1-8B-Instruct)"]
+        Groq_LLM["Groq Cloud API (Zero-Downtime Fallback: qwen/qwen3.8-27b)"]
         HF_LLM -.->|Auto-Failover on 402/Limit/Error| Groq_LLM
     end
 
@@ -156,7 +156,7 @@ flowchart TD
     Clf -->|"Academic Paper"| MCP_Arxiv["FastMCP arXiv Tool (export.arxiv.org)"]
     Clf -->|"Live Market / Web"| MCP_Web["FastMCP Web Reader (Clean Markdown)"]
     Clf -->|"Global / Overview"| Dossier["Pre-computed Executive Dossier + Root Chapters"]
-    Clf -->|"Specific / Numerical"| Hybrid["Parallel Hybrid Search (< 2ms)"]
+    Clf -->|"Specific / Numerical"| Hybrid["Parallel Hybrid Search (BM25 + Fusion ~2ms)"]
 
     Hybrid --> Tree["Hierarchical LLM Tree Traversal (Weight 0.6)"]
     Hybrid --> BM25["Pure-Python Okapi BM25 (Weight 0.4)"]
@@ -194,7 +194,7 @@ flowchart TD
 - **100% Vectorless**: Consumes zero vector storage, requires no vector database (Qdrant, Chroma, Pinecone), and eliminates cosine drift.
 - **Sub-Millisecond Lexical Index**: Powered by a zero-dependency Okapi BM25 implementation supporting Arabic and English tokenization, BM25 title boosting ($3\times$), and inverted index hashing in under **0.5ms**.
 - **Nucleus (`top_p = 0.75`) Cumulative Probability Cutoff**: Normalizes consensus candidate scores into a probability distribution via Softmax ($T=0.15$), rejecting long-tail noise candidates ($P < 0.18$).
-- **Result**: Pushes Context Precision from **39.16% to 82.50%** on IEEE benchmarks and **81.1%** on FinanceBench.
+- **Result**: Pushes Context Precision from **39.16% to 82.50%** on IEEE benchmarks and **81.1%** on the FinanceBench-style 10-K sample.
 
 ### 3. 🧠 Query Intent Routing & Collective Knowledge Dossiers
 - **Sub-Millisecond Classifier**: Classifies queries in $< 0.02\text{ms}$ into `Local`, `Global / Overview`, `Multi-Hop`, `Comparison`, or `External Tool` routes.
@@ -230,11 +230,11 @@ Mounted via official Model Context Protocol (FastMCP) at `/mcp` and exposed thro
 
 ## 📊 Industry Benchmarks & Quantitative Evaluation (95 Questions)
 
-Atlas was systematically validated across **95 comprehensive evaluation questions** combining an **80-question IEEE Research Benchmark** (`data.pdf`: *Unifying LLMs and Knowledge Graphs: A Roadmap*, IEEE TKDE 2024, 28 pages) with a **15-question SEC Form 10-K FinanceBench Benchmark** (`financebench_10k_sample.pdf`, 6 pages).
+Atlas was systematically validated across **95 comprehensive evaluation questions** combining an **80-question IEEE Research Benchmark** (`data.pdf`: *Unifying LLMs and Knowledge Graphs: A Roadmap*, IEEE TKDE 2024, 28 pages) with a **15-question FinanceBench-style 10-K sample** (`financebench_10k_sample.pdf`, 6 pages).
 
 ### Subsystem Health & Functional Audit (Table 1)
 
-All 11 integrated subsystems, tools, and routers passed automated verification with strict latency bounds:
+All 9 integrated subsystems, tools, and routers passed automated verification with strict latency bounds:
 
 | Subsystem / Tool | Audit Status | Latency | Operational Description |
 | :--- | :---: | :---: | :--- |
@@ -254,16 +254,16 @@ All 11 integrated subsystems, tools, and routers passed automated verification w
 
 Comparison between baseline PageIndex RAG and the upgraded Atlas platform featuring Nucleus (`top_p = 0.75`) RRF and exact inner-page citation pinning:
 
-| Evaluation Metric | Baseline Score (Pre-Upgrades) | Upgraded Atlas (`top_p` Nucleus) | Improvement / Delta | Benchmark Status |
+| Evaluation Metric | Baseline Score (Pre-Upgrades) | Upgraded Atlas (`top_p` Nucleus) | Delta (pp) | Benchmark Status |
 | :--- | :---: | :---: | :---: | :---: |
-| **Context Precision** | 39.16% | **82.50%** | **+43.34%** | 🎯 **+80% Target Achieved** |
-| **Citation Page Accuracy** | 38.33% | **83.13%** | **+44.80%** | 🎯 **+80% Target Achieved** |
-| **Retrieval Recall** | 73.08% | **77.98%** | **+4.90%** | 🚀 Major Uplift |
-| **Answer Correctness** | 87.73% | **90.77%** | **+3.04%** | ✅ SOTA Quality |
-| **Faithfulness (Anti-Hallucination)** | 90.65% | **92.01%** | **+1.36%** | ✅ Strictly Grounded |
-| **Global Questions Recall** | 41.00% | **52.60%** | **+11.60%** | 🏆 Dossier Boost |
+| **Context Precision** | 39.16% | **82.50%** | **+43.34 pp** | 🎯 **+80% Target Achieved** |
+| **Citation Page Accuracy** | 38.33% | **83.13%** | **+44.80 pp** | 🎯 **+80% Target Achieved** |
+| **Retrieval Recall** | 73.08% | **77.98%** | **+4.90 pp** | 🚀 Major Uplift |
+| **Answer Correctness** | 87.73% | **90.77%** | **+3.04 pp** | ✅ SOTA Quality |
+| **Faithfulness (Anti-Hallucination)** | 90.65% | **92.01%** | **+1.36 pp** | ✅ Strictly Grounded |
+| **Global Questions Recall** | 41.00% | **52.60%** | **+11.60 pp** | 🏆 Dossier Boost |
 | **Average Query Latency** | 1.80 s | **1.45 s** | **-0.35 s** | ⚡ High Velocity |
-| **Average Cost per Query** | $0.000919 | **$0.000512** | Stable (< $0.001) | 💰 Zero Embedding Cost |
+| **Average Cost per Query** | $0.000919 | **$0.000512** | **-$0.000407** | 💰 Zero Embedding Cost |
 
 #### Category Performance Breakdown (IEEE Benchmark, N=80)
 - **Summary Questions (N=10)**: **100.0% Context Precision**, **100.0% Citation Accuracy**, **83.7% Recall**.
@@ -274,21 +274,21 @@ Comparison between baseline PageIndex RAG and the upgraded Atlas platform featur
 
 ---
 
-### FinanceBench SEC 10-K Benchmark — 15 Questions (Table 3)
+### FinanceBench-style 10-K Sample — 15 Questions (Table 3)
 
-Evaluated against `financebench_10k_sample.pdf` (*Atlas Technologies, Inc. SEC Form 10-K Annual Report*):
+Evaluated against `financebench_10k_sample.pdf` (*Atlas Technologies, Inc. SEC Form 10-K Annual Report*). This dataset is a small synthetic sample (N=15, 3 questions per category), so category-level numbers are indicative, not statistically robust.
 
 | Financial Category | N | Retrieval Recall | Context Precision | Answer Correctness | Faithfulness | Citation Page Acc | Avg Latency | Cost / Query |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Overall (All 15 Questions)** | 15 | **84.4%** | **81.1%** | **94.7%** | **96.9%** | **81.1%** | **1.25 s** | **$0.000406** |
-| **Table & Numerical Extraction** | 3 | 66.7% | 66.7% | 83.3% | 88.7% | 66.7% | 1.25 s | $0.000406 |
-| **Financial Ratio & Math Reasoning** | 3 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | 1.25 s | $0.000406 |
-| **Multi-Hop Footnote Synthesis** | 3 | 83.3% | 61.1% | 95.0% | 98.0% | 61.1% | 1.25 s | $0.000406 |
-| **Global Executive Summary** | 3 | 72.2% | 77.8% | 95.0% | 98.0% | 77.8% | 1.25 s | $0.000406 |
-| **Out-of-Document / Live Web Fallback** | 3 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | 1.25 s | $0.000406 |
+| **Table & Numerical Extraction** | 3 | 66.7% | 66.7% | 83.3% | 88.7% | 66.7% | — | — |
+| **Financial Ratio & Math Reasoning** | 3 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | — | — |
+| **Multi-Hop Footnote Synthesis** | 3 | 83.3% | 61.1% | 95.0% | 98.0% | 61.1% | — | — |
+| **Global Executive Summary** | 3 | 72.2% | 77.8% | 95.0% | 98.0% | 77.8% | — | — |
+| **Out-of-Document / Live Web Fallback** | 3 | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | — | — |
 
 ```mermaid
-pie title FinanceBench Question Distribution by Category
+pie title FinanceBench-style 10-K Sample Question Distribution by Category
     "Table & Numerical Extraction" : 3
     "Financial Ratio & Math Reasoning" : 3
     "Multi-Hop Footnote Synthesis" : 3
@@ -296,9 +296,9 @@ pie title FinanceBench Question Distribution by Category
     "Out-of-Document / Live Web Fallback" : 3
 ```
 
-- 📄 **Full Benchmark Report:** [`evaluation/FULL_BENCHMARK_AND_FINANCEBENCH_REPORT.md`](file:///mnt/work/projects/RAG_pageindex/pageindex_RAG/evaluation/FULL_BENCHMARK_AND_FINANCEBENCH_REPORT.md)
-- 📊 **FinanceBench Sample Dataset:** [`evaluation/financebench_sample.json`](file:///mnt/work/projects/RAG_pageindex/pageindex_RAG/evaluation/financebench_sample.json)
-- 🧪 **Master Evaluation Runner:** [`evaluation/run_full_system_benchmark.py`](file:///mnt/work/projects/RAG_pageindex/pageindex_RAG/evaluation/run_full_system_benchmark.py)
+- 📄 **Full Benchmark Report:** [evaluation/FULL_BENCHMARK_AND_FINANCEBENCH_REPORT.md](evaluation/FULL_BENCHMARK_AND_FINANCEBENCH_REPORT.md)
+- 📊 **FinanceBench-style 10-K Sample Dataset:** [evaluation/financebench_sample.json](evaluation/financebench_sample.json)
+- 🧪 **Master Evaluation Runner:** [evaluation/run_full_system_benchmark.py](evaluation/run_full_system_benchmark.py)
 
 ---
 
@@ -310,7 +310,7 @@ pie title FinanceBench Question Distribution by Category
 | **Package Management** | **`uv`** (Astral) | Sub-second deterministic dependency resolution & virtual environments |
 | **Vectorless Lexical Engine** | **Zero-Dependency Okapi BM25** | In-memory tokenized index, Arabic/English normalization, title boost |
 | **RRF & Nucleus Selection** | **Weighted consensus RRF + Softmax** | Dynamic `top_p = 0.75` cumulative cutoff, $T=0.15$, noise filtering |
-| **MCP Server Mount** | **`fastmcp` (4.1.0)** + **`mcp` (2.3.0)** | Official Model Context Protocol server mounted via ASGI at `/mcp` |
+| **MCP Server Mount** | **`fastmcp` (4.1.0)** + **`mcp` (2.3.0)** | Official Model Context Protocol server mounted via ASGI at `/mcp` (`>=4.1.0` and `>=2.3.0` in `pyproject.toml`, pinned in `uv.lock`) |
 | **Research Tools** | **`httpx`**, **`beautifulsoup4`**, **`trafilatura`** | Clean HTML-to-Markdown extraction, public arXiv Atom XML parser |
 | **Media & Math Analysis** | **`youtube_transcript_api`**, **Python `ast`** | Video transcript segmenter, exploit-safe AST math evaluator |
 | **Primary LLM Provider** | **`huggingface-hub`** (`meta-llama/Llama-3.1-8B-Instruct`) | Outline tree navigation, sub-node pruning synthesis, citations |
