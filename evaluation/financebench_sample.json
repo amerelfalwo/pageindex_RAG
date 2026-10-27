@@ -1,0 +1,203 @@
+[
+  {
+    "id": "FB_01",
+    "category": "Table & Numerical Extraction",
+    "question": "What was Atlas Technologies' total consolidated revenue and total cost of revenue for fiscal year 2024 according to the Consolidated Statements of Operations?",
+    "ground_truth_pages": [3],
+    "ground_truth_answer": "According to the Consolidated Statements of Operations on Page 3, Atlas Technologies reported total consolidated revenue of $12,450 million and total cost of revenue of $4,980 million for the fiscal year ended December 31, 2024.",
+    "key_facts": [
+      "$12,450 million total revenue",
+      "$4,980 million total cost of revenue",
+      "Page 3",
+      "Statements of Operations"
+    ]
+  },
+  {
+    "id": "FB_02",
+    "category": "Table & Numerical Extraction",
+    "question": "What was the diluted earnings per share (EPS) and the diluted weighted-average shares outstanding in fiscal year 2024 compared to fiscal year 2023?",
+    "ground_truth_pages": [3],
+    "ground_truth_answer": "On Page 3, diluted earnings per share (EPS) was $4.85 in fiscal year 2024 compared to $3.35 in fiscal year 2023. The diluted weighted-average shares outstanding were 502 million in 2024 compared to 492 million in 2023.",
+    "key_facts": [
+      "Diluted EPS $4.85 in 2024",
+      "Diluted EPS $3.35 in 2023",
+      "502 million shares in 2024",
+      "492 million shares in 2023"
+    ]
+  },
+  {
+    "id": "FB_03",
+    "category": "Table & Numerical Extraction",
+    "question": "What were the cash and cash equivalents, marketable securities, and total assets reported on the Consolidated Balance Sheets as of December 31, 2024?",
+    "ground_truth_pages": [4],
+    "ground_truth_answer": "According to the Consolidated Balance Sheets on Page 4, as of December 31, 2024, Atlas Technologies reported $3,850 million in Cash and Cash Equivalents, $2,100 million in Marketable Securities (total liquid cash & securities of $5,950 million), and Total Assets of $15,680 million.",
+    "key_facts": [
+      "Cash and cash equivalents $3,850 million",
+      "Marketable securities $2,100 million",
+      "Total assets $15,680 million",
+      "Page 4"
+    ]
+  },
+  {
+    "id": "FB_04",
+    "category": "Financial Ratio & Math Reasoning",
+    "question": "Calculate the Year-over-Year (YoY) revenue growth percentage from fiscal year 2023 ($10,200 million) to fiscal year 2024 ($12,450 million).",
+    "ground_truth_pages": [2, 3],
+    "math_expression": "percentage(12450 - 10200, 10200)",
+    "expected_numerical_result": 22.0588,
+    "ground_truth_answer": "The YoY revenue growth percentage is calculated as ((12,450 - 10,200) / 10,200) * 100% = 2,250 / 10,200 * 100% = 22.0588% (approximately 22.06%).",
+    "key_facts": [
+      "22.06%",
+      "22.0588%",
+      "$2,250 million increase",
+      "from $10,200 million to $12,450 million"
+    ]
+  },
+  {
+    "id": "FB_05",
+    "category": "Financial Ratio & Math Reasoning",
+    "question": "What was the operating margin of Atlas Technologies for fiscal year 2024, based on operating income ($2,863 million) and total revenue ($12,450 million)?",
+    "ground_truth_pages": [2, 3],
+    "math_expression": "percentage(2863, 12450)",
+    "expected_numerical_result": 22.996,
+    "ground_truth_answer": "The operating margin for fiscal year 2024 is calculated as (Operating Income / Total Revenue) * 100% = ($2,863 million / $12,450 million) * 100% = 22.996% (approximately 23.00%), up from 19.00% in fiscal 2023.",
+    "key_facts": [
+      "23.00%",
+      "22.996%",
+      "$2,863 million operating income",
+      "$12,450 million total revenue"
+    ]
+  },
+  {
+    "id": "FB_06",
+    "category": "Financial Ratio & Math Reasoning",
+    "question": "Calculate the Free Cash Flow (FCF) conversion rate relative to Net Income for fiscal 2024, given FCF of $2,560 million and Net Income of $2,434 million.",
+    "ground_truth_pages": [2, 4],
+    "math_expression": "percentage(2560, 2434)",
+    "expected_numerical_result": 105.1767,
+    "ground_truth_answer": "The FCF conversion rate relative to net income is calculated as (Free Cash Flow / Net Income) * 100% = ($2,560 million / $2,434 million) * 100% = 105.1767% (approximately 105.18%), demonstrating high cash conversion and quality of earnings.",
+    "key_facts": [
+      "105.18%",
+      "105.1767%",
+      "FCF $2,560 million",
+      "Net Income $2,434 million"
+    ]
+  },
+  {
+    "id": "FB_07",
+    "category": "Multi-Hop Footnote Synthesis",
+    "question": "Cross-referencing the Balance Sheet with Note 9 (Debt), what is the composition of the $3,800 million in long-term debt, including instruments, coupon rates, and maturity dates?",
+    "ground_truth_pages": [4, 5],
+    "ground_truth_answer": "As reported on the Balance Sheet (Page 4) and detailed in Note 9 (Page 5), the $3,800 million in long-term debt consists of two fixed-rate instruments: 1) $2,000 million in Senior Notes (3.75% coupon rate) maturing in October 2028, and 2) $1,800 million in Convertible Senior Notes (1.25% coupon rate) maturing in June 2031. The aggregate weighted-average interest rate is 2.82%.",
+    "key_facts": [
+      "Senior Notes $2,000M at 3.75% due October 2028",
+      "Convertible Senior Notes $1,800M at 1.25% due June 2031",
+      "Total debt $3,800 million",
+      "Note 9 Page 5 and Balance Sheet Page 4"
+    ]
+  },
+  {
+    "id": "FB_08",
+    "category": "Multi-Hop Footnote Synthesis",
+    "question": "Based on Note 9, does Atlas Technologies comply with its debt covenants regarding minimum interest coverage and maximum leverage as of December 31, 2024?",
+    "ground_truth_pages": [3, 5],
+    "ground_truth_answer": "Yes, Note 9 (Page 5) confirms full covenant compliance: 1) The interest coverage ratio was 27.20x, far exceeding the required minimum of 3.50x; 2) The leverage ratio was 0.98x, safely below the maximum allowable limit of 3.00x.",
+    "key_facts": [
+      "Compliant with all covenants",
+      "Interest coverage ratio 27.20x vs required 3.50x",
+      "Leverage ratio 0.98x vs maximum 3.00x",
+      "Note 9 Page 5"
+    ]
+  },
+  {
+    "id": "FB_09",
+    "category": "Multi-Hop Footnote Synthesis",
+    "question": "Synthesizing the Statement of Cash Flows (Page 4) and Note 14 (Commitments), how much did Atlas invest in CapEx in 2024, and what are its future unconditional cloud purchase commitments through 2027?",
+    "ground_truth_pages": [4, 6],
+    "ground_truth_answer": "According to the Cash Flow summary on Page 4, Atlas invested $980 million in capital expenditures (CapEx) in fiscal 2024. In Note 14 (Page 6), the company disclosed unconditional purchase obligations totaling $1,450 million through 2027 for cloud compute and GPU clusters ($550 million in 2025, $500 million in 2026, and $400 million in 2027).",
+    "key_facts": [
+      "CapEx $980 million on Page 4",
+      "Total purchase commitments $1,450 million on Page 6",
+      "$550M in 2025, $500M in 2026, $400M in 2027",
+      "GPU and datacenter capacity"
+    ]
+  },
+  {
+    "id": "FB_10",
+    "category": "Global Executive Summary",
+    "question": "Provide an executive summary of Atlas Technologies' financial performance for fiscal year 2024, highlighting revenue, margins, net income, and cash flow generation.",
+    "ground_truth_pages": [1, 2, 3, 4],
+    "ground_truth_answer": "In fiscal year 2024, Atlas Technologies achieved stellar financial results: total revenue reached $12,450 million (up 22.06% YoY), gross margin expanded to 60.00%, and operating income jumped 47.73% to $2,863 million (23.00% operating margin). Net income increased 44.78% to $2,434 million ($4.85 diluted EPS). The business generated $3,540 million in operating cash flow and $2,560 million in Free Cash Flow (105.18% net income conversion), ending the year with $5,950 million in cash and marketable securities and zero net debt.",
+    "key_facts": [
+      "Revenue $12,450 million (+22.06%)",
+      "Gross margin 60.00% and Operating margin 23.00%",
+      "Net Income $2,434 million / Diluted EPS $4.85",
+      "Free Cash Flow $2,560 million"
+    ]
+  },
+  {
+    "id": "FB_11",
+    "category": "Global Executive Summary",
+    "question": "What are Atlas Technologies' primary business operating segments and what proportion of consolidated revenue did each represent in fiscal 2024?",
+    "ground_truth_pages": [1],
+    "ground_truth_answer": "As detailed in Item 1 on Page 1, Atlas Technologies operates in three primary segments: 1) Atlas Cloud Infrastructure (ACI) providing GPU inference and distributed storage, representing 58% of consolidated revenue; 2) Intelligent Document Solutions (IDS) delivering SaaS hierarchical document indexing, representing 32% of revenue; and 3) Edge AI & Autonomous Robotics representing 10% of revenue.",
+    "key_facts": [
+      "Atlas Cloud Infrastructure (ACI): 58%",
+      "Intelligent Document Solutions (IDS): 32%",
+      "Edge AI & Autonomous Robotics: 10%",
+      "Item 1 Page 1"
+    ]
+  },
+  {
+    "id": "FB_12",
+    "category": "Global Executive Summary",
+    "question": "Summarize the company's capital allocation strategy across R&D, capital expenditures, and shareholder return programs in 2024 and early 2025.",
+    "ground_truth_pages": [2, 4, 6],
+    "ground_truth_answer": "Atlas Technologies maintains a disciplined capital allocation strategy: 1) Substantial R&D reinvestment ($2,490 million, 20.00% of revenue) in vectorless PageIndex retrieval and safe AST reasoning; 2) Capital expenditures of $980 million to expand GPU infrastructure; 3) Prudent liquidity preservation ($5,950 million in total cash and securities); and 4) Direct shareholder returns via a newly authorized $1,500 million share repurchase program approved in January 2025 (Note 14).",
+    "key_facts": [
+      "R&D $2,490 million (20% of revenue)",
+      "CapEx $980 million",
+      "Cash & securities $5,950 million",
+      "Share repurchase authorization $1,500 million in Jan 2025"
+    ]
+  },
+  {
+    "id": "FB_13",
+    "category": "Out-of-Document / Live Web Fallback",
+    "question": "What are the standard SEC Form 10-K filing deadlines for large accelerated filers compared to accelerated and non-accelerated filers?",
+    "ground_truth_pages": [],
+    "ground_truth_answer": "Under SEC regulations, Form 10-K annual report filing deadlines are: 1) Large Accelerated Filers (public float of $700 million or more): 60 days after fiscal year-end; 2) Accelerated Filers (public float between $75 million and $700 million): 75 days after fiscal year-end; 3) Non-Accelerated Filers (public float below $75 million): 90 days after fiscal year-end.",
+    "key_facts": [
+      "Large accelerated filers: 60 days",
+      "Accelerated filers: 75 days",
+      "Non-accelerated filers: 90 days",
+      "SEC filing rules"
+    ]
+  },
+  {
+    "id": "FB_14",
+    "category": "Out-of-Document / Live Web Fallback",
+    "question": "Search for recent arXiv academic papers on financial sentiment analysis and automated SEC 10-K report summarization.",
+    "ground_truth_pages": [],
+    "ground_truth_answer": "Recent academic preprints on arXiv demonstrate transformer architectures, specialized financial LLMs (e.g. FinBERT, BloombergGPT), and hierarchical document processing to summarize SEC 10-K/10-Q filings, extract risk disclosures, and correlate sentiment with earnings surprises.",
+    "key_facts": [
+      "arXiv academic papers",
+      "financial sentiment analysis",
+      "10-K summarization",
+      "FinBERT or financial LLMs"
+    ]
+  },
+  {
+    "id": "FB_15",
+    "category": "Out-of-Document / Live Web Fallback",
+    "question": "Search online for the latest industry trends and benefits of vectorless RAG architectures compared to traditional vector embeddings.",
+    "ground_truth_pages": [],
+    "ground_truth_answer": "Vectorless RAG architectures (such as PageIndex hierarchical tree retrieval) avoid the loss of document structure, chunk boundary severance, embedding drift, and high vector database infrastructure costs associated with traditional embedding-based RAG. They achieve superior context precision, exact page citations, and near-zero hallucination rates by traversing document trees directly.",
+    "key_facts": [
+      "vectorless RAG",
+      "eliminates chunking and embedding loss",
+      "hierarchical tree traversal",
+      "page-level citations"
+    ]
+  }
+]

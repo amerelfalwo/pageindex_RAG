@@ -97,6 +97,8 @@ class VectorlessRAG:
 
         pruned_nodes: List[Dict[str, Any]] = []
         for node in nodes:
+            if not isinstance(node, dict):
+                continue
             node_copy = dict(node)
             # Preserve injected executive knowledge dossiers and root chapter summaries without paragraph loss
             if node.get("is_dossier") or node.get("is_root_chapter"):

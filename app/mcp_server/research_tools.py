@@ -611,7 +611,9 @@ def atlas_query_document_impl(doc_id: str, query: str) -> Dict[str, Any]:
         selected_nodes: List[Dict[str, Any]] = []
         if bm25:
             bm25_matches = bm25.search(query, top_k=5)
-            selected_nodes.extend(bm25_matches)
+            for nid, _ in bm25_matches:
+                if nid in node_map:
+                    selected_nodes.append(node_map[nid])
 
         if not selected_nodes and tree:
             # Fallback to top-level tree nodes
