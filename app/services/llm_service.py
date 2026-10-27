@@ -719,7 +719,8 @@ If there is insufficient evidence:
                 if images:
                     image_markers = "\n" + "\n".join([f"[IMAGE_AVAILABLE: {url}]" for url in images])
                 title = node.get("title") or node.get("name") or "(Untitled Section)"
-                page = node.get("page_index") or node.get("page") or "?"
+                active_page = node.get("active_page")
+                page = active_page if active_page is not None else (node.get("page_index") or node.get("page") or "?")
                 text = (node.get("text") or node.get("content") or "Content not available.").strip()
                 if len(text) > max_node_chars:
                     text = text[:max_node_chars].rstrip() + "\n[...section continues...]"

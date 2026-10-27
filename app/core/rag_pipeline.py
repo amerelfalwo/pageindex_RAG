@@ -106,13 +106,35 @@ class VectorlessRAG:
                 continue
 
             raw_text = (node.get("text") or node.get("content") or "").strip()
+            marker_pattern = re.compile(r'---\s*\[PAGE\s+(\d+)\]\s*---', re.IGNORECASE)
+            found_markers = [int(m) for m in marker_pattern.findall(raw_text)]
+
             if len(raw_text) <= min_char_threshold:
+                if found_markers:
+                    node_copy["active_page"] = found_markers[0]
+                    node_copy["active_pages"] = sorted(list(set(found_markers)))
+                else:
+                    fallback_p = node.get("page_index") or node.get("page") or 1
+                    node_copy["active_page"] = fallback_p
+                    node_copy["active_pages"] = [fallback_p]
+                # Lexical overlap estimation for short node
+                raw_lower = raw_text.lower()
+                node_copy["relevance_score"] = float(sum(3.0 for t in query_terms if t in raw_lower))
                 pruned_nodes.append(node_copy)
                 continue
 
             default_page = node.get("page_index") or node.get("page") or 1
             paragraphs = cls._parse_paragraphs_with_page_markers(raw_text, default_page)
             if len(paragraphs) <= 1:
+                if found_markers:
+                    node_copy["active_page"] = found_markers[0]
+                    node_copy["active_pages"] = sorted(list(set(found_markers)))
+                else:
+                    fallback_p = default_page
+                    node_copy["active_page"] = fallback_p
+                    node_copy["active_pages"] = [fallback_p]
+                raw_lower = raw_text.lower()
+                node_copy["relevance_score"] = float(sum(3.0 for t in query_terms if t in raw_lower))
                 pruned_nodes.append(node_copy)
                 continue
 
@@ -188,11 +210,41 @@ class VectorlessRAG:
             node_copy["original_chars"] = len(raw_text)
             node_copy["pruned_chars"] = len(new_text)
 
+            # Pin winning inner active page and spanned pages
+            winning_page = top_para.get("page") or default_page
+            selected_pages = [p["page"] for p in selected_paras if p.get("page") is not None]
+            unique_pages = sorted(list(set(selected_pages)), key=lambda x: int(x) if str(x).isdigit() else 0)
+            node_copy["active_page"] = winning_page
+            node_copy["active_pages"] = unique_pages if unique_pages else [winning_page]
+            node_copy["relevance_score"] = top_score
+
             app_logger.info(
-                f"[PRUNE] node='{node.get('title')}' original={len(raw_text)} chars -> "
+                f"[PRUNE] node='{node.get('title')}' active_page={winning_page} original={len(raw_text)} chars -> "
                 f"pruned={len(new_text)} chars ({len(selected_paras)}/{len(paragraphs)} paras)"
             )
             pruned_nodes.append(node_copy)
+
+        # Post-Pruning Relevance Filter: drop trailing noise nodes with near-zero relevance compared to rank-1
+        if len(pruned_nodes) > 1:
+            best_score = max(
+                (n.get("relevance_score", 0.0) for n in pruned_nodes if not n.get("is_dossier") and not n.get("is_root_chapter")),
+                default=0.0
+            )
+            if best_score >= 4.0:
+                filtered_nodes = []
+                for idx, n in enumerate(pruned_nodes):
+                    if idx == 0 or n.get("is_dossier") or n.get("is_root_chapter"):
+                        filtered_nodes.append(n)
+                        continue
+                    sc = n.get("relevance_score", 0.0)
+                    if sc >= 0.22 * best_score:
+                        filtered_nodes.append(n)
+                    else:
+                        app_logger.info(
+                            f"[PRUNE-FILTER] Dropped trailing node '{n.get('title')}' with low relevance "
+                            f"({sc:.1f} vs best {best_score:.1f})"
+                        )
+                pruned_nodes = filtered_nodes
 
         return pruned_nodes
 
@@ -220,17 +272,28 @@ class VectorlessRAG:
         collect(tree)
         return collected
 
-    @staticmethod
+    @classmethod
     def reciprocal_rank_fusion(
+        cls,
         ranked_lists: List[Tuple[List[str], float]],
         rrf_k: int = 60,
         top_k: int = 4,
+        top_p: Optional[float] = None,
+        min_p: float = 0.18,
+        min_k: int = 1,
+        temperature: float = 0.15,
+        is_multi_hop: bool = False,
     ) -> List[Tuple[str, float]]:
         """
-        Weighted Reciprocal Rank Fusion (RRF):
-        Combines multiple ranked lists into a single consensus ranking.
-        score(d) = sum_L (w_L / (rrf_k + rank_L(d)))
+        Weighted Reciprocal Rank Fusion (RRF) with Nucleus (top_p) Cumulative Probability Cutoff:
+        1. Combines ranked lists into consensus score(d) = sum_L (w_L / (rrf_k + rank_L(d))).
+        2. Normalizes candidate scores into probability distribution P(node_i) via temperature-scaled Softmax.
+        3. Dynamically selects minimal sufficient set of nodes until cumulative probability >= top_p.
+           Drops noise trailing nodes where P(node_i) < min_p (preventing context dilution).
+        4. Bounded by min_k and top_k (allows min_k=2 for explicit multi-hop queries).
         """
+        import math
+
         rrf_scores: Dict[str, float] = {}
         for items, weight in ranked_lists:
             for rank, item_id in enumerate(items, start=1):
@@ -238,8 +301,57 @@ class VectorlessRAG:
                     continue
                 rrf_scores[item_id] = rrf_scores.get(item_id, 0.0) + (weight / (rrf_k + rank))
 
+        if not rrf_scores:
+            return []
+
         sorted_items = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
-        return sorted_items[:top_k]
+        if len(sorted_items) <= 1:
+            return sorted_items
+
+        if not top_p or top_p <= 0:
+            return sorted_items[:top_k]
+
+        candidates = sorted_items[:max(top_k, 3)]
+        max_score = candidates[0][1]
+        if max_score <= 0:
+            return candidates[:1]
+
+        # Normalized relative to top candidate (norm_score = 1.0)
+        norm_scores = [sc / max_score for _, sc in candidates]
+
+        # Temperature-scaled Softmax
+        t = max(temperature, 0.01)
+        exp_vals = [math.exp((ns - 1.0) / t) for ns in norm_scores]
+        sum_exp = sum(exp_vals)
+        probs = [ev / sum_exp for ev in exp_vals]
+
+        # Effective min_k: for explicit multi-hop queries, allow min_k = 2 if candidate 2 has relevance
+        effective_min_k = 2 if is_multi_hop and len(candidates) >= 2 else min_k
+
+        selected: List[Tuple[str, float]] = []
+        cum_p = 0.0
+
+        for idx, (item, p) in enumerate(zip(candidates, probs)):
+            if idx == 0:
+                selected.append(item)
+                cum_p += p
+                continue
+
+            if len(selected) >= top_k:
+                break
+
+            if len(selected) < effective_min_k and p >= 0.12:
+                selected.append(item)
+                cum_p += p
+                continue
+
+            if cum_p < top_p and p >= min_p:
+                selected.append(item)
+                cum_p += p
+            else:
+                break
+
+        return selected
 
     def _get_document_dossier(self, doc_id: Optional[str], doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Retrieves pre-computed executive dossier from document payload or persistent storage."""
@@ -439,10 +551,19 @@ class VectorlessRAG:
                 llm_node_ids = search_res.get("node_list", [])
                 bm25_node_ids = [nid for nid, sc in bm25_matches if sc > 0]
 
-                # Weighted Reciprocal Rank Fusion: 0.6 LLM Tree Search, 0.4 BM25
+                # Weighted Reciprocal Rank Fusion with Nucleus (top_p) Cutoff: 0.6 LLM Tree Search, 0.4 BM25
+                is_multi_hop_query = (
+                    "multi" in query.lower()
+                    or "between" in query.lower()
+                    or "connect" in query.lower()
+                    or ("and" in query.lower() and ("relat" in query.lower() or "compar" in query.lower() or "synthes" in query.lower()))
+                )
                 fused_results = self.reciprocal_rank_fusion(
                     ranked_lists=[(llm_node_ids, 0.6), (bm25_node_ids, 0.4)],
                     top_k=4 if deep_analysis else 3,
+                    top_p=0.75,
+                    min_p=0.18,
+                    is_multi_hop=is_multi_hop_query or is_global,
                 )
                 fused_node_ids = [nid for nid, _ in fused_results]
 

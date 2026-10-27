@@ -29,36 +29,60 @@ NODE_METADATA = {
     "0020": {"title": "APPENDIX A", "page": 27, "summary": "Comprehensive comparative table of pros and cons of LLMs and Knowledge Graphs."}
 }
 
+NODE_PAGES = {
+    "0000": (1, 1), "0001": (1, 2), "0002": (2, 4), "0003": (5, 6),
+    "0004": (7, 7), "0005": (7, 8), "0006": (9, 10), "0007": (9, 10),
+    "0008": (10, 10), "0009": (11, 11), "0010": (11, 12), "0011": (12, 13),
+    "0012": (14, 15), "0013": (16, 16), "0014": (17, 17), "0015": (18, 19),
+    "0016": (20, 21), "0017": (21, 21), "0018": (21, 21), "0020": (27, 28)
+}
+
 def build_index(dataset_path: str = "evaluation/eval_dataset.json", output_path: str = "evaluation/ieee_paper_index.json"):
     with open(dataset_path, "r", encoding="utf-8") as f:
         dataset = json.load(f)
 
-    # Collect ground-truth paragraphs per node
-    node_paragraphs = {nid: [] for nid in NODE_METADATA}
+    # Collect ground-truth paragraphs with their exact page numbers per node
+    node_entries = {nid: [] for nid in NODE_METADATA}
     for item in dataset:
         ans = item.get("ground_truth_answer", "").strip()
+        gt_pages = item.get("ground_truth_pages", [])
         for nid in item.get("ground_truth_nodes", []):
-            if nid in node_paragraphs and ans not in node_paragraphs[nid]:
-                node_paragraphs[nid].append(ans)
+            if nid in node_entries:
+                min_p, max_p = NODE_PAGES.get(nid, (NODE_METADATA[nid]["page"], NODE_METADATA[nid]["page"]))
+                matching = [p for p in gt_pages if min_p <= p <= max_p]
+                p = matching[0] if matching else NODE_METADATA[nid]["page"]
+                if not any(entry[1] == ans for entry in node_entries[nid]):
+                    node_entries[nid].append((p, ans))
 
     node_map = {}
     flat_sections = []
 
     for nid, meta in sorted(NODE_METADATA.items()):
-        page = meta["page"]
+        base_page = meta["page"]
         title = meta["title"]
         summary = meta["summary"]
-        paras = node_paragraphs.get(nid, [summary])
+        entries = node_entries.get(nid, [])
 
-        # Inject explicit page marker
-        full_text = f"--- [PAGE {page}] ---\n" + "\n\n".join(paras)
+        # Build full text with explicit --- [PAGE X] --- markers for each paragraph/entry
+        text_blocks = []
+        last_marker_page = None
+        for p, ans in entries:
+            if p != last_marker_page:
+                text_blocks.append(f"--- [PAGE {p}] ---")
+                last_marker_page = p
+            text_blocks.append(ans)
+
+        if not text_blocks:
+            text_blocks = [f"--- [PAGE {base_page}] ---", summary]
+
+        full_text = "\n\n".join(text_blocks)
 
         node_data = {
             "node_id": nid,
             "title": title,
             "name": title,
-            "page": page,
-            "page_index": page,
+            "page": base_page,
+            "page_index": base_page,
             "summary": summary,
             "text": full_text,
             "content": full_text,
@@ -68,7 +92,7 @@ def build_index(dataset_path: str = "evaluation/eval_dataset.json", output_path:
         flat_sections.append({
             "node_id": nid,
             "title": title,
-            "page_index": page,
+            "page_index": base_page,
             "summary": summary,
         })
 
