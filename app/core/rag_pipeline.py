@@ -279,9 +279,9 @@ class VectorlessRAG:
         rrf_k: int = 60,
         top_k: int = 4,
         top_p: Optional[float] = None,
-        min_p: float = 0.18,
-        min_k: int = 1,
-        temperature: float = 0.15,
+        min_p: float = 0.08,
+        min_k: int = 2,
+        temperature: float = 0.35,
         is_multi_hop: bool = False,
     ) -> List[Tuple[str, float]]:
         """
@@ -563,8 +563,10 @@ class VectorlessRAG:
                 fused_results = self.reciprocal_rank_fusion(
                     ranked_lists=[(llm_node_ids, llm_weight), (bm25_node_ids, bm25_weight)],
                     top_k=5 if deep_analysis else 4,
-                    top_p=0.88,
-                    min_p=0.12,
+                    top_p=0.90,
+                    min_p=0.08,
+                    min_k=2,
+                    temperature=0.35,
                     is_multi_hop=is_multi_hop_query or is_global,
                 )
                 fused_node_ids = [nid for nid, _ in fused_results]

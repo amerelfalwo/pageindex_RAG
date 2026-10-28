@@ -46,7 +46,7 @@ class LLMService:
         self.hf_exhausted = False
 
         # Groq Fallback Client (used when Hugging Face tokens/credits are depleted)
-        self.groq_api_key = os.getenv("GROQ_API_KEY")
+        self.groq_api_key = os.getenv("GROQ_API_KEY_2") or os.getenv("GROQ_API_KEY")
         self.groq_client: Optional[AsyncOpenAI] = None
         self.groq_chat_model = os.getenv("GROQ_CHAT_MODEL", "openai/gpt-oss-120b")
         self.groq_retrieval_model = os.getenv("GROQ_RETRIEVAL_MODEL", "openai/gpt-oss-120b")
@@ -181,6 +181,9 @@ class LLMService:
                         "node_id": nid,
                         "title": n.get("title", "(untitled)"),
                         "summary": summary_text,
+                        "text": n.get("text") or n.get("content") or "",
+                        "page_index": n.get("page_index") or n.get("page") or 1,
+                        "page": n.get("page") or n.get("page_index") or 1,
                     })
                 if n.get("nodes"):
                     traverse(n["nodes"])

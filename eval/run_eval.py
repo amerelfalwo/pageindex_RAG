@@ -103,12 +103,14 @@ async def ask_one(c: httpx.AsyncClient, doc_id: str, q: str) -> dict:
     except Exception as e:  # recorded, never swallowed silently
         err = f"{type(e).__name__}: {e}"
     raw = "".join(buf)
-    stages = [json.loads(m) for m in STAGE_RE.findall(raw) if m.startswith("{")]
+    ans = STAGE_RE.sub("", raw).strip()
+    if not err and ("error occurred while connecting to model" in ans.lower() or "عذراً، حدث خطأ" in ans):
+        err = f"ProviderError: {ans[:80]}"
     return {
-        "answer": STAGE_RE.sub("", raw).strip(),
-        "stages": stages,
-        "used_web": any(s.get("stage") == "web_search" for s in stages),
-        "used_arxiv": any(s.get("stage") == "arxiv_search" for s in stages),
+        "answer": ans,
+        "stages": [json.loads(m) for m in STAGE_RE.findall(raw) if m.startswith("{")],
+        "used_web": any(s.get("stage") == "web_search" for s in stages if 'stage' in s) if 'stages' in locals() else any('"web_search"' in m for m in STAGE_RE.findall(raw)),
+        "used_arxiv": any('"arxiv_search"' in m for m in STAGE_RE.findall(raw)),
         "latency_s": round(time.monotonic() - t0, 3),
         "ttfb_s": round(ttfb, 3) if ttfb is not None else None,
         "error": err,
@@ -174,7 +176,7 @@ Return JSON:
 
 def groq_client():
     from openai import AsyncOpenAI
-    key = os.getenv("GROQ_API_KEY_JUDGE") or os.getenv("GROQ_API_KEY")
+    key = os.getenv("GROQ_API_KEY_JUDGE")
     if not key:
         raise SystemExit("GROQ_API_KEY_JUDGE missing (expected in ../.env)")
     return AsyncOpenAI(api_key=key, base_url="https://api.groq.com/openai/v1", timeout=90)
