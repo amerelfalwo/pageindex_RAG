@@ -46,7 +46,7 @@ class LLMService:
         self.hf_exhausted = False
 
         # Groq Fallback Client (used when Hugging Face tokens/credits are depleted)
-        self.groq_api_key = os.getenv("GROQ_API_KEY_2") or os.getenv("GROQ_API_KEY")
+        self.groq_api_key = os.getenv("GROQ_API_KEY_3") or os.getenv("GROQ_API_KEY_2") or os.getenv("GROQ_API_KEY")
         self.groq_client: Optional[AsyncOpenAI] = None
         self.groq_chat_model = os.getenv("GROQ_CHAT_MODEL", "openai/gpt-oss-120b")
         self.groq_retrieval_model = os.getenv("GROQ_RETRIEVAL_MODEL", "openai/gpt-oss-120b")
@@ -1195,9 +1195,9 @@ Return only the final user-facing answer."""
         if any(b in q_lower for b in brief_triggers) and not deep_analysis:
             max_out_tokens = 500
         elif deep_analysis:
-            max_out_tokens = 2048
+            max_out_tokens = 1500
         else:
-            max_out_tokens = 1100
+            max_out_tokens = 800
 
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(chat_history)
@@ -1279,7 +1279,7 @@ Return only the final user-facing answer."""
                     model=self.groq_chat_model,
                     messages=groq_messages,
                     temperature=0.2,
-                    max_tokens=max_out_tokens,
+                    max_tokens=min(max_out_tokens, 800),
                     stream=True,
                 )
                 first_chunk = None
@@ -1386,7 +1386,7 @@ WEB SEARCH SOURCING & LINK VERIFICATION RULES:
    - NEVER invent, hallucinate, or construct speculative URLs. Every URL MUST match an exact URL from the verified LIVE WEB SEARCH EVIDENCE above.
 2. Embed verified clickable Markdown links directly throughout your answer: [Source Title](URL).
 3. At the end of your response, ALWAYS include a dedicated sources section:
-### 🌐 المصادر والروابط ذات الصلة:
+###  المصادر والروابط ذات الصلة:
 - [Source Title 1](URL 1) - وصف دقيق ومختصر للمحتوى الفعلي الموجود داخل الرابط
 - [Source Title 2](URL 2) - وصف دقيق ومختصر للمحتوى الفعلي الموجود داخل الرابط
 """

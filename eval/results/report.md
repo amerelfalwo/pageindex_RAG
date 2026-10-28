@@ -6,11 +6,11 @@ Server `http://localhost:7860` · judge `openai/gpt-oss-20b` · 40 items
 
 | Category | N | Correctness | Key-fact recall | Faithfulness | Cite recall | Cite precision | False refusal |
 |---|--:|--:|--:|--:|--:|--:|--:|
-| Global | 8 | 0.0% | 3.1% | 17.9% | 0.0% | n/a | 75.0% |
-| Local | 10 | 20.0% | 15.0% | 13.3% | 0.0% | 0.0% | 70.0% |
-| Multi-hop | 10 | 30.0% | 29.2% | 29.1% | 10.0% | 75.0% | 60.0% |
+| Global | 8 | 12.5% | 15.6% | 22.8% | 0.0% | 0.0% | 62.5% |
+| Local | 10 | 30.0% | 21.7% | 23.3% | 10.0% | 50.0% | 30.0% |
+| Multi-hop | 10 | 30.0% | 30.8% | 22.6% | 5.0% | 25.0% | 50.0% |
 | Numerical | 4 | 0.0% | 0.0% | n/a | 0.0% | n/a | 100.0% |
-| **Overall** | 32 | 15.6% | 14.6% | 20.4% | 3.1% | 30.0% | 71.9% |
+| **Overall** | 32 | 21.9% | 20.3% | 22.9% | 4.7% | 20.0% | 53.1% |
 
 ## Unanswerable questions (N=8)
 
@@ -21,7 +21,7 @@ Server `http://localhost:7860` · judge `openai/gpt-oss-20b` · 40 items
 
 ## Latency
 
-- {'mean': 33.53, 'median': 52.73, 'p95': 56.68, 'mean_ttfb': 12.77}
+- {'mean': 54.24, 'median': 55.21, 'p95': 58.31, 'mean_ttfb': 18.15}
 
 Web/arXiv tools used on answerable questions: 3.1%
 
