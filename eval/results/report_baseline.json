@@ -1,0 +1,78 @@
+{
+  "base_url": "http://localhost:7860",
+  "judge_model": "qwen/qwen3.8-27b",
+  "n_items": 40,
+  "answerable_overall": {
+    "n": 32,
+    "answer_correctness": 0.3125,
+    "key_fact_recall": 0.3312,
+    "faithfulness": 0.2731,
+    "citation_page_recall": 0.0469,
+    "citation_page_precision": 0.3333,
+    "any_gt_page_cited": 0.0625,
+    "false_refusal_rate": 0.4375
+  },
+  "answerable_by_category": {
+    "Global": {
+      "n": 8,
+      "answer_correctness": 0.25,
+      "key_fact_recall": 0.325,
+      "faithfulness": 0.2458,
+      "citation_page_recall": 0.0625,
+      "citation_page_precision": 0.5,
+      "any_gt_page_cited": 0.125,
+      "false_refusal_rate": 0.125
+    },
+    "Local": {
+      "n": 10,
+      "answer_correctness": 0.4,
+      "key_fact_recall": 0.4,
+      "faithfulness": 0.3,
+      "citation_page_recall": 0.1,
+      "citation_page_precision": 0.5,
+      "any_gt_page_cited": 0.1,
+      "false_refusal_rate": 0.5
+    },
+    "Multi-hop": {
+      "n": 10,
+      "answer_correctness": 0.3,
+      "key_fact_recall": 0.3333,
+      "faithfulness": 0.2778,
+      "citation_page_recall": 0.0,
+      "citation_page_precision": 0.0,
+      "any_gt_page_cited": 0.0,
+      "false_refusal_rate": 0.5
+    },
+    "Numerical": {
+      "n": 4,
+      "answer_correctness": 0.25,
+      "key_fact_recall": 0.1667,
+      "faithfulness": 0.25,
+      "citation_page_recall": 0.0,
+      "citation_page_precision": null,
+      "any_gt_page_cited": 0.0,
+      "false_refusal_rate": 0.75
+    }
+  },
+  "unanswerable": {
+    "n": 8,
+    "correct_refusal_rate": 1.0,
+    "fabrication_rate": 0.0,
+    "absence_probe_hallucination_rate": 0.375,
+    "web_fallback_rate": 0.0,
+    "arxiv_fallback_rate": 0.125
+  },
+  "latency_s": {
+    "mean": 31.97,
+    "median": 33.94,
+    "p95": 53.69,
+    "mean_ttfb": 12.17
+  },
+  "web_or_arxiv_used_on_answerable": 0.2188,
+  "request_errors": [],
+  "caveats": [
+    "Retrieval recall/context precision are not exposed by /ask; citation-page recall/precision (pages the answer cites vs. ground-truth evidence pages) is used as the retrieval proxy.",
+    "Faithfulness = share of answer claims supported by the benchmark evidence quotes/reference (judge-estimated); correct-but-uncited claims count as unsupported.",
+    "LLM judge differs from the answering model but is still an LLM; N is small (40)."
+  ]
+}

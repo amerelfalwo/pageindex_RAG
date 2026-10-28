@@ -56,10 +56,10 @@ class BM25NodeIndex:
             # Weighted field representation:
             # Title: 3x boost
             # Summary: 2x boost
-            # Text: 1x (first 3000 chars)
+            # Text: 1x (first 8000 chars to cover full sections)
             title = node.get("title") or ""
             summary = node.get("summary") or ""
-            text = (node.get("text") or node.get("content") or "")[:3000]
+            text = (node.get("text") or node.get("content") or "")[:8000]
 
             title_tokens = self.tokenize(title) * 3
             summary_tokens = self.tokenize(summary) * 2

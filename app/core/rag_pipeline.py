@@ -77,9 +77,9 @@ class VectorlessRAG:
         if not nodes:
             return []
 
-        min_char_threshold = 1200
-        target_budget = 3600 if deep_analysis else 1800
-        max_paras = 8 if deep_analysis else 4
+        min_char_threshold = 1800
+        target_budget = 5000 if deep_analysis else 3600
+        max_paras = 10 if deep_analysis else 7
 
         # Extract meaningful query keywords
         q_clean = query.lower()
@@ -551,18 +551,20 @@ class VectorlessRAG:
                 llm_node_ids = search_res.get("node_list", [])
                 bm25_node_ids = [nid for nid, sc in bm25_matches if sc > 0]
 
-                # Weighted Reciprocal Rank Fusion with Nucleus (top_p) Cutoff: 0.6 LLM Tree Search, 0.4 BM25
                 is_multi_hop_query = (
                     "multi" in query.lower()
                     or "between" in query.lower()
                     or "connect" in query.lower()
                     or ("and" in query.lower() and ("relat" in query.lower() or "compar" in query.lower() or "synthes" in query.lower()))
                 )
+                # Dynamic RRF weighting: allocate full weight to BM25 if LLM tree search returns empty
+                llm_weight = 0.45 if llm_node_ids else 0.0
+                bm25_weight = 0.55 if llm_node_ids else 1.0
                 fused_results = self.reciprocal_rank_fusion(
-                    ranked_lists=[(llm_node_ids, 0.6), (bm25_node_ids, 0.4)],
-                    top_k=4 if deep_analysis else 3,
-                    top_p=0.75,
-                    min_p=0.18,
+                    ranked_lists=[(llm_node_ids, llm_weight), (bm25_node_ids, bm25_weight)],
+                    top_k=5 if deep_analysis else 4,
+                    top_p=0.88,
+                    min_p=0.12,
                     is_multi_hop=is_multi_hop_query or is_global,
                 )
                 fused_node_ids = [nid for nid, _ in fused_results]
@@ -692,13 +694,12 @@ class VectorlessRAG:
                     app_logger.warning(f"[FastMCP] Web search fallback failed: {web_err}")
 
             # FastMCP Academic / arXiv Research tool:
-            # Trigger arXiv search when user asks for research papers, citations, or literature reviews
+            # Trigger arXiv search only when user explicitly asks for external preprints or research papers
             arxiv_results = None
             is_academic_query = intent_res.get("is_academic", False)
             academic_triggers = [
-                "arxiv", "paper", "papers", "research paper", "literature review",
-                "citations", "academic", "preprint", "journal", "أوراق بحثية", "ورقة بحثية",
-                "أبحاث", "ابحاث", "دراسات", "مراجع", "ابحاث مكمله", "ابحاث مكملة", "أبحاث مكملة",
+                "arxiv", "search arxiv", "arxiv preprint", "research papers from arxiv", "literature review",
+                "academic preprints", "أوراق بحثية من اركايف", "ابحث في اركايف", "أبحاث خارجية", "أوراق بحثية خارجية"
             ]
             if not is_academic_query:
                 is_academic_query = any(at in q_lower for at in academic_triggers)

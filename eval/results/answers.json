@@ -1,0 +1,691 @@
+[
+  {
+    "answer": "The provided document context does not contain enough information to answer this reliably. The retrieved text from the \"1 INTRODUCTION\" section and the Abstract discusses the general limitations of Large Language Models (LLMs), such as being \"black-box models\" that \"fall short of capturing and accessing factual knowledge,\" but it does not provide a specific concrete example regarding who discovered gravity.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 10.32,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 48.297,
+    "ttfb_s": 14.421,
+    "error": null,
+    "id": "Q01"
+  },
+  {
+    "answer": "Based on the provided document context, the specific training objective for **decoder-only** LLMs is not explicitly detailed in the retrieved text.\n\nThe document mentions that \"Existing large language models mostly rely on unsupervised training on the large-scale corpus\" and discusses integrating Knowledge Graphs (KGs) into the \"training objective\" as a category of research (Section 4.1.1), but it does not specify the standard objective function (e.g., next-token prediction) used by decoder-only architectures in the provided excerpts.\n\nHowever, in general NLP knowledge (distinct from the specific document evidence provided):\nDecoder-only LLMs typically follow a **next-token prediction** (or causal language modeling) objective, where the model is trained to predict the next word in a sequence given the previous words.\n\n*(Note: The provided document context does not contain enough information to answer this reliably with specific citations from the PDF.)*",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.34,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 55.916,
+    "ttfb_s": 19.376,
+    "error": null,
+    "id": "Q02"
+  },
+  {
+    "answer": "Based on the provided document context, there is no information regarding the specific elements that a prompt for an LLM can contain. The text focuses on the limitations of Large Language Models (such as hallucination and lack of interpretability) and the benefits of integrating Knowledge Graphs (KGs) to address these issues, but it does not detail prompt engineering structures or components.\n\nThe provided document context does not contain enough information to answer this reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.92,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 53.668,
+    "ttfb_s": 19.643,
+    "error": null,
+    "id": "Q03"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to answer this reliably.\n\nWhile the document discusses the use of Knowledge Graphs (KGs) in various contexts—such as LLM interpretability, probing, and question answering (e.g., Section 4.4, Page 10; Section 5.5, Page 17)—it does not provide a formal mathematical definition of a Knowledge Graph (typically expressed as a tuple of sets like $G = (E, R, T)$ or similar) nor does it explicitly define what the specific sets in such a definition stand for in a general theoretical sense. The text focuses on the application and integration of KGs with LLMs rather than the foundational formal definition of the data structure itself.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.94,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 56.762,
+    "ttfb_s": 19.556,
+    "error": null,
+    "id": "Q04"
+  },
+  {
+    "answer": "Based on the provided document context, there is no mention of a model that uses a \"visible matrix\" to prevent knowledge triples from adding noise to a sentence's other tokens.\n\nThe retrieved text discusses several methods for integrating Knowledge Graphs (KGs) into LLMs, including:\n*   **ERNIE:** Uses a word-entity alignment training objective.\n*   **KALM:** Enhances input tokens with entity embeddings and includes an entity prediction task.\n*   **KEPLER:** Employs both KG embedding and masked token pre-training objectives in a shared encoder.\n*   **Deterministic LLM:** Focuses on deterministic factual knowledge using span masking and clue contrast learning.\n*   **WKLM:** Replaces entities with same-type entities to train the model to distinguish replacements.\n*   **ERNIE 3.0:** Represents triples as token sequences and concatenates them with sentences, randomly masking relation tokens or sentence tokens.\n\nWhile ERNIE 3.0 is noted to allow tokens in the sentence to \"intensively interact\" with tokens in the knowledge sub-graph, the text does not describe a mechanism involving a \"visible matrix\" to mitigate noise. Therefore, the available document context does not contain enough information to answer this specific question reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 16.14,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 53.195,
+    "ttfb_s": 19.743,
+    "error": null,
+    "id": "Q05"
+  },
+  {
+    "answer": "The pioneering method that used Knowledge Graph (KG) facts to probe what Large Language Models (LLMs) know is **LAMA**.\n\nAccording to the document, LAMA converts a fact into a question for the model through the following process:\n1.  It takes facts from KGs and converts them into **cloze statements** (fill-in-the-blank questions) using a **pre-defined prompt template**.\n2.  It masks the target entity (usually the object of the relation) in the statement.\n3.  It uses the LLM to predict the missing entity.\n\nFor example, to probe the fact `(Obama, profession, president)`, LAMA converts it into the cloze question: **“Obama’s profession is .”** (with the object masked). The model is then tested on whether it can correctly predict the missing word, “president.”\n\n(Section: \"4.4 KG-enhanced LLM Interpretability\", Page: 10)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.95,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 53.738,
+    "ttfb_s": 19.579,
+    "error": null,
+    "id": "Q06"
+  },
+  {
+    "answer": "Based on the provided document context, there is **no explicit mention** of a specific \"computational drawback\" (such as high latency, memory usage, or inference cost) associated with using LLMs as encoders for Knowledge Graph Completion (KGC) when making predictions.\n\nThe retrieved text (Section 5.2 and surrounding context on Page 12) describes the **methodology** of LLM-augmented KGC, such as:\n*   Treating entities and relations as special tokens.\n*   Using masked entity prediction (e.g., `kNN-KGE`).\n*   Integrating graph structure and textual information into the embedding space.\n\nHowever, the specific section detailing the *computational costs* or *drawbacks* of this approach during the prediction phase is not included in the provided excerpt. The text cuts off after introducing the concept of KGC and describing how LLMs are used to generate embeddings, but it does not list the disadvantages or computational limitations in this specific segment.\n\nTherefore, the available document context does not contain enough information to answer this reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.91,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 52.762,
+    "ttfb_s": 18.566,
+    "error": null,
+    "id": "Q07"
+  },
+  {
+    "answer": "Based on the provided document context, there is **no specific mention** of a framework that pairs a \"small LLM with a larger one\" to fix errors in automatically generated Knowledge Graphs (KGs).\n\nThe retrieved context discusses:\n1.  **KG-S2S**: A model using a \"straightforward T5 small architecture\" that is randomly initialized (not paired with a larger LLM) for Knowledge Graph Completion (KGC) tasks like static, temporal, and few-shot KGC (Section: \"5.3 LLM-augmented KG Construction\", Page: 14).\n2.  **General Integration Paradigms**: The document outlines three core paradigms: KG-enhanced LLMs, LLM-augmented KGs, and Synergized LLMs + KGs (Section: \"Unifying Large Language Models and Knowledge Graphs: A Roadmap\", Page: 1).\n3.  **Error Mitigation**: It states generally that integrating KGs with LLMs reduces hallucination and improves factual consistency (Section: \"Executive Knowledge Dossier & Core Findings\", Page: 1), but does not detail a specific \"small-large LLM pairing\" mechanism for error correction in KG construction.\n\nTherefore, the specific mechanism you are asking about (pairing a small LLM with a larger one for error fixing) is **not described** in the available document context. The document focuses on joint pre-training, retrieval-augmented generation, and specific models like KG-S2S, but does not detail a hierarchical small-large LLM error correction framework for KGs.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 16.25,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 54.337,
+    "ttfb_s": 19.858,
+    "error": null,
+    "id": "Q08"
+  },
+  {
+    "answer": "Based on the provided document context, there is no information describing how a specific group ensured that sentences in a Wikipedia-derived corpus were linked to a Knowledge Graph (KG).\n\nThe retrieved section (Section 5.4, Page 16) discusses:\n*   Sentence-level and Document-level Relation Extraction (RE) methods using LLMs (e.g., Peng et al., TRE, BERT-MTB, Curriculum-RE, RECENT, Jiewen).\n*   Document-level RE approaches (e.g., Hong et al., HIN, GLRE, SIRE, LSR, GAIN, DocuNet, ATLOP, DREEAM).\n*   End-to-end KG construction from raw text (e.g., Kumar et al.).\n\nHowever, it does not contain details about the specific methodology for linking Wikipedia sentences to a KG in a corpus-building process.\n\nThe provided document context does not contain enough information to answer this reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.82,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 52.697,
+    "ttfb_s": 19.426,
+    "error": null,
+    "id": "Q09"
+  },
+  {
+    "answer": "Based on the provided document context, the specific details regarding what happens to the Knowledge Graph (KG) **at each layer** in a \"joint text–KG attention model\" are not explicitly described in the retrieved text.\n\nThe document discusses **synergized models** that use additional KG fusion modules (Section 6.1), such as:\n*   **ERNIE**: Uses a dual-encoder architecture where a T-encoder encodes text and a K-encoder processes KGs, fusing them with textual representations.\n*   **BERT-MK**: Uses a similar dual-encoder but includes neighboring entity information in the knowledge encoder.\n*   **CoKE-BERT**: Uses a GNN-based module to filter irrelevant KG entities.\n*   **JAKET**: Fuses entity information in the middle of the LLM.\n*   **KEPLER, JointGT, DRAGON, HKLM**: Various unified or joint representation learning models.\n\nHowever, the text does not provide a layer-by-layer breakdown of how the KG is processed or transformed at each specific layer within a single \"joint text–KG attention\" mechanism. It describes architectures where KGs are encoded separately or fused at specific points (e.g., middle of the LLM), but it does not detail the internal per-layer operations of the KG itself in a unified attention model.\n\nTherefore, the provided document context does not contain enough information to answer what specifically happens to the KG at each layer and why in that specific model configuration.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.02,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 53.349,
+    "ttfb_s": 19.059,
+    "error": null,
+    "id": "Q10"
+  },
+  {
+    "answer": "Based on the provided document context, the model that utilizes word-to-entity alignment links (specifically **ERNIE**) organizes its encoders by **feeding both sentences and the corresponding entities mentioned in the text into the LLMs**.\n\nThe model then trains to **predict alignment links between textual tokens and entities in knowledge graphs**. This process is described as a \"word-entity alignment training objective\" where the hidden representations generated by the LLMs are used to establish these connections, effectively fusing text and KG information during the pre-training phase.\n\n![Figure 9: Injecting KG information into LLMs training objective via text-knowledge alignment loss](/static/fig_p7_8_fb61d3.png)\n\n*(Section: \"4.1 KG-enhanced LLM Pre-training\", Page: 8)*",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.33,
+        "nodes": 4,
+        "docs": 1
+      },
+      {
+        "stage": "web_search",
+        "query": "How does the model trained with word-to-entity alignment links organize its encoders to fuse text with KG information?"
+      },
+      {
+        "stage": "web_search_done",
+        "duration": 6.0,
+        "results": 0
+      }
+    ],
+    "used_web": true,
+    "used_arxiv": false,
+    "latency_s": 53.813,
+    "ttfb_s": 18.438,
+    "error": null,
+    "id": "Q11"
+  },
+  {
+    "answer": "Based on the provided document context, the model that directly employs both a knowledge graph (KG) embedding training objective and a masked-token pre-training objective into a shared transformer-based encoder is **KEPLER** [40] (Section: \"4.1 KG-enhanced LLM Pre-training\", Page: 8).\n\nRegarding how it obtains entity embeddings, the provided text **does not contain enough information** to answer this specific part of your question. The text mentions that KEPLER uses a \"knowledge graph embedding training objective,\" but it does not describe the specific mechanism or method used to generate or obtain the entity embeddings themselves.\n\nFor context, the document does describe how other models handle entity embeddings:\n*   **KALM** [91] enhances input tokens by incorporating entity embeddings (Section: \"4.1 KG-enhanced LLM Pre-training\", Page: 8).\n*   **ERNIE** [35] feeds entities mentioned in the text into the LLMs to predict alignment links (Section: \"4.1 KG-enhanced LLM Pre-training\", Page: 8).\n\nHowever, no such details are provided for KEPLER's entity embedding acquisition process in the retrieved context.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 16.2,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 53.249,
+    "ttfb_s": 19.824,
+    "error": null,
+    "id": "Q12"
+  },
+  {
+    "answer": "Based on the provided document context, there is **no mention** of a specific Graph Neural Network (GNN)-based method that grounds LLM reasoning steps in Knowledge Graphs (KGs) for analysis, nor is there any text describing a criticism regarding \"squeezing the text into one vector\" within the context of fusion reasoning.\n\nThe retrieved sections discuss:\n1.  **KG-enhanced LLM Inference** (Section 4.2), specifically focusing on **Retrieval-Augmented Knowledge Fusion** (RAG) and its variants like Story-fragments and EMAT. It mentions that RAG retrieves documents and fuses them as hidden variables or context, but does not explicitly name a GNN-based method for grounding reasoning steps in this specific section.\n2.  **KG-Enhanced LLMs** (Section 4 intro), which provides a high-level categorization of research areas (pre-training, inference, interpretability, etc.) but does not detail specific GNN architectures or their criticisms in the provided text snippet.\n\nWhile the document mentions \"LLM-KG fusion reasoning\" in the taxonomy (Fig. 8), the specific details about a GNN method and the \"squeezing text into one vector\" criticism are not present in the supplied evidence.\n\n**Conclusion:**\nThe provided document context does not contain enough information to answer this reliably. The specific GNN-based method and the associated criticism regarding vector squeezing are not described in the retrieved sections.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.01,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 55.412,
+    "ttfb_s": 19.988,
+    "error": null,
+    "id": "Q13"
+  },
+  {
+    "answer": "Based on the provided document context, there is **insufficient information** to answer the specific question about the general advantages of *prompts* for using KGs with LLMs or the practical downsides of *KG prompts*.\n\nThe retrieved section (Section 4.2, Page 9) discusses **KG-enhanced LLM Inference** and specifically details **Retrieval-Augmented Knowledge Fusion (RAG)**. It mentions that:\n*   Methods that fuse knowledge into LLMs (like pre-training or instruction-tuning) have the limitation that they **do not permit updates to the incorporated knowledge without retraining the model**, which is time-consuming and resource-intensive.\n*   RAG addresses this by keeping knowledge separate and injecting it during inference, allowing for up-to-date knowledge without retraining.\n\nHowever, the text does not explicitly discuss \"prompts\" as a distinct method with its own specific advantages and downsides separate from the broader category of inference-time knowledge injection (like RAG). It does not mention \"KG prompts\" specifically. Therefore, I cannot provide a supported answer regarding the specific pros and cons of *prompts* based solely on the provided evidence.\n\nIf you are referring to the general inference-time methods described (like RAG), the main practical downside mentioned for *other* methods (pre-training/instruction-tuning) is the need for retraining, whereas RAG avoids this. But for *prompts* specifically, the document context does not contain enough information to answer this reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.96,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 54.067,
+    "ttfb_s": 19.595,
+    "error": null,
+    "id": "Q14"
+  },
+  {
+    "answer": "Based on the provided document context, there is **insufficient information** to answer this question reliably.\n\nThe retrieved context mentions \"Graph Neural Networks (GNNs)\" in the \"Key Entities & Terms\" section (Page 1) and discusses \"KG-enhanced pre-training\" where \"graph embeddings and relational objectives are jointly optimized with language modeling loss\" (Page 1). It also describes a specific framework for Knowledge Graph Question Answering (KGQA) involving a \"Relation/entity Extractor\" and an \"Answer Reasoner\" (Page 18).\n\nHowever, the specific details regarding:\n1.  A method that explicitly **fuses** an LLM with a GNN.\n2.  The specific mechanism of how this fusion reasons over KG facts.\n3.  A comparison with a **dual-encoder approach** (which is not mentioned in the provided text).\n\n...are not present in the supplied document excerpts. The text on Page 18 describes a pipeline where LLMs act as answer reasoners over retrieved facts (citing DEKCOR), but it does not describe a GNN-fusion architecture or compare it to a dual-encoder setup.\n\nTherefore, I cannot provide a grounded answer based on the available evidence.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.54,
+        "nodes": 6,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 53.251,
+    "ttfb_s": 18.415,
+    "error": null,
+    "id": "Q15"
+  },
+  {
+    "answer": "Based on the provided document context, **Wikidata** is described as one of the most widely used encyclopedic knowledge graphs (Section: \"2 BACKGROUND\", Page: 4).\n\nRegarding the source of its knowledge, the document states that encyclopedic knowledge graphs in general (including Wikidata) are often constructed by integrating information from diverse and extensive sources, including **human experts, encyclopedias, and databases** (Section: \"2 BACKGROUND\", Page: 4).\n\nAs for its role among real-world applications, the document notes that encyclopedic knowledge graphs represent **general knowledge in the real world** and are the most ubiquitous type of KG (Section: \"2 BACKGROUND\", Page: 4).",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.31,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 55.09,
+    "ttfb_s": 18.912,
+    "error": null,
+    "id": "Q16"
+  },
+  {
+    "answer": "Based on the provided document context, here is the answer to your question:\n\n**Why Hallucination Hurts Trust**\nThe document states that the hallucination problem in Large Language Models (LLMs)—defined as generating factually incorrect content—**\"significantly hinders the reliability of LLMs.\"** Consequently, to gain public trust and enable broader applications, it is imperative to detect and assess these instances of hallucination within LLMs and other AI-generated content (AIGC). (Section: \"7 FUTURE DIRECTIONS AND MILESTONES\", Page: 20)\n\n**New Role for KGs**\nThe paper highlights a new role for Knowledge Graphs (KGs) in **hallucination detection**. While existing studies have tried to use KGs to *prevent* hallucination through pre-training or KG-enhanced inference, the document notes that hallucination may persist for the foreseeable future. Therefore, the paper emphasizes the need to utilize KGs to **detect and assess** instances of hallucination, rather than just relying on them to prevent it. This is presented as a critical future direction to ensure reliability. (Section: \"7 FUTURE DIRECTIONS AND MILESTONES\", Page: 20)\n\n*(Note: The document mentions that existing methods for detection often use neural classifiers on small document sets, which are not robust enough, implying that KG-based detection is a more promising or necessary future approach, though specific new KG detection methodologies are not detailed in this specific excerpt.)*",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.91,
+        "nodes": 2,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 58.016,
+    "ttfb_s": 19.516,
+    "error": null,
+    "id": "Q17"
+  },
+  {
+    "answer": "Based on the provided document context, here is the explanation for why pretraining-based methods struggle with changing knowledge and why direct editing is not a clean fix:\n\n**1. Why Pretraining-Based KG Injection Cannot Keep Up with Changing Knowledge**\nPretraining-based methods (such as KG-enhanced pre-training or instruction-tuning) fuse knowledge into the LLM's parameters during the training phase. The document explicitly states that a major limitation of these approaches is that **they do not permit updates to the incorporated knowledge without retraining the model** (Section: \"4.3 Comparison between KG-enhanced LLM Pre-training and Inference\", Page: 9).\n\n*   **Resource Intensity:** Retraining is described as \"time-consuming and requires lots of resources\" (Section: \"4.3 Comparison between KG-enhanced LLM Pre-training and Inference\", Page: 9).\n*   **Generalization Issues:** Because the knowledge is baked into the weights, these models may not generalize well to unseen or newly updated knowledge during inference (Section: \"4.3 Comparison between KG-enhanced LLM Pre-training and Inference\", Page: 9).\n\n**2. Why Directly Editing Single Facts is Not a Clean Fix**\nThe provided document context **does not contain specific information** regarding the technical challenges or reasons why \"directly editing single facts\" in an LLM is not a clean fix. The text focuses on the limitations of *pretraining* (requiring full retraining) and introduces *inference-time* methods (like Retrieval-Augmented Generation) as the solution to keep knowledge spaces separate and updatable.\n\nWhile the document notes that inference-time methods are preferred because they allow knowledge to be injected without retraining, it does not explicitly discuss the pitfalls of direct parameter editing (such as catastrophic interference or lack of interpretability) in the retrieved section. Therefore, based strictly on the provided evidence, I cannot detail the specific reasons why direct editing is considered unclean, other than implying that the preferred alternative is to keep knowledge separate from the model weights during inference.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 16.44,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 52.697,
+    "ttfb_s": 20.061,
+    "error": null,
+    "id": "Q18"
+  },
+  {
+    "answer": "Based on the provided document context, there is **no information** regarding \"multimodal KGs,\" the specific data types they cover, or the challenges in connecting \"multimodal LLMs\" to them.\n\nThe retrieved text from Section 2 (Background) discusses:\n*   Standard Knowledge Graphs (KGs) storing facts as triples `(head entity, relation, tail entity)`.\n*   Examples of KGs like Wikidata, YAGO, and NELL.\n*   The benefits of KGs (explicit knowledge, symbolic reasoning, interpretability).\n*   The challenges of KGs (difficulty in construction, handling incomplete/dynamic data, modeling unseen entities).\n*   The benefits of integrating standard KGs with standard LLMs to reduce hallucination and improve interpretability.\n\nHowever, the terms \"multimodal,\" \"multimodal KGs,\" or \"multimodal LLMs\" do not appear in the provided text snippet. Therefore, I cannot answer this question using the supplied document evidence.\n\n*(Note: If you are asking for general knowledge outside of this specific document, please clarify, and I can provide a general overview based on broader AI literature, but it will not be cited from `ieee_roadmap.pdf`.)*",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.99,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 53.933,
+    "ttfb_s": 18.658,
+    "error": null,
+    "id": "Q19"
+  },
+  {
+    "answer": "Based on the provided document context, there is **no information** regarding \"closed models like ChatGPT,\" \"fusion-module knowledge injection,\" or specific workarounds for closed-source models.\n\nThe retrieved sections discuss:\n1.  **LLM-KG Fusion Reasoning:** This involves combining LLM and KG encoders with a synergized reasoning module, but it is described in the context of general frameworks and does not specifically address the limitations of closed models like ChatGPT or suggest workarounds for them (Section: \"7 FUTURE DIRECTIONS AND MILESTONES\", Page: 20).\n2.  **KG-enhanced LLM Interpretability:** This section discusses using KGs to probe or analyze LLMs to understand their inner workings, but it does not mention closed models or injection workarounds (Section: \"4.4 KG-enhanced LLM Interpretability\", Page: 10).\n3.  **Hallucination Detection:** This section discusses using KGs to detect hallucinations, not to inject knowledge into closed models (Section: \"7 FUTURE DIRECTIONS AND MILESTONES\", Page: 20).\n\nTherefore, the provided document context does not contain enough information to answer this reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.96,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 55.945,
+    "ttfb_s": 19.599,
+    "error": null,
+    "id": "Q20"
+  },
+  {
+    "answer": "Based on the provided document context, the paper proposes unifying Large Language Models (LLMs) and Knowledge Graphs (KGs) through two primary methodological approaches, which are distinguished by **when** the knowledge is integrated into the model lifecycle:\n\n### 1. KG-Enhanced Pre-training / Instruction-Tuning\n*   **Mechanism:** This approach involves fusing knowledge into the LLMs during the training phase. Specifically, the text mentions \"KGs Instruction-tuning\" which leverages knowledge from KGs for downstream tasks.\n*   **Characteristics:**\n    *   It requires **retraining** the models.\n    *   It is described as **time-consuming** and resource-intensive.\n    *   It embeds knowledge implicitly into the model's parameters.\n*   **Limitation:** The document notes that these approaches do not permit updates to the incorporated knowledge without retraining, meaning they may not generalize well to unseen knowledge during inference.\n\n### 2. KG-Enhanced LLM Inference (Retrieval-Augmented Knowledge Fusion)\n*   **Mechanism:** This approach keeps the knowledge space (KG) and text space (LLM) separate and injects knowledge **during inference**. The specific method highlighted is **Retrieval-Augmented Generation (RAG)**.\n    *   **Process:**\n        1.  Given input text, the system searches for relevant knowledge in a non-parametric module (e.g., via MIPS) to obtain documents or KG triples.\n        2.  These retrieved items are treated as hidden variables or additional context.\n        3.  They are fed into the output generator (the LLM) to guide generation.\n*   **Characteristics:**\n    *   It allows for **up-to-date** real-world knowledge without retraining.\n    *   It is particularly effective for **Question Answering (QA)** tasks, which require both textual semantics and current facts.\n    *   It can generate more specific, diverse, and factual text compared to parametric-only baselines.\n    *   Variants like *Story-fragments* and *EMAT* further refine this by determining salient entities or encoding knowledge into key-value memory for efficiency.\n\n### How They Relate to Each Other\n\nThe two approaches are presented as complementary solutions to the core limitations of pure LLMs (hallucination, lack of interpretability, and static knowledge):\n\n1.  **Temporal Complementarity:**\n    *   **Pre-training/Instruction-Tuning** provides a foundational, static layer of knowledge embedded in the model's weights.\n    *   **Inference-Time Retrieval (RAG)** provides a dynamic, updatable layer of knowledge that can be accessed on-the-fly.\n\n2.  **Problem-Solving Hierarchy:**\n    *   The document positions **KG-Enhanced Inference** as a solution to the specific limitation of pre-trained models: their inability to update knowledge without costly retraining.\n    *   While pre-training methods \"effectively fuse knowledge,\" they fail at generalizing to *unseen* knowledge. Inference-time methods directly address this by retrieving *current* or *unseen* knowledge from an external KG at the time of query.\n\n3.  **Shared Goal:**\n    *   Both aim to mitigate **hallucination** and improve **factual consistency** by grounding LLM outputs in explicit, structured KG data rather than relying solely on the LLM's implicit, probabilistic parameterization.\n\nIn essence, the paper suggests that while pre-training embeds static knowledge, inference-time retrieval (like RAG) is critical for maintaining accuracy and relevance in dynamic, real-world scenarios where knowledge changes frequently.\n\n*(Section: \"4.2 KG-enhanced LLM Inference\", Page: 9; Section: \"2 BACKGROUND\", Page: 2)*",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.71,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 56.681,
+    "ttfb_s": 19.109,
+    "error": null,
+    "id": "Q21"
+  },
+  {
+    "answer": "Based on the provided document context, the motivation for combining Large Language Models (LLMs) and Knowledge Graphs (KGs) stems from their complementary strengths and individual limitations.\n\n**Strengths and Weaknesses of LLMs:**\n*   **Strengths:** LLMs excel in generating human-like text and understanding natural language. They possess strong contextual understanding capabilities.\n*   **Weaknesses:** Pure LLMs suffer from persistent issues such as hallucination, shallow factual grounding, and limited relational reasoning. Additionally, linearizing whole KGs as input to LLMs is often impossible due to size constraints, and the linearization process may lose underlying structural information from the KGs.\n\n**Strengths and Weaknesses of KGs:**\n*   **Strengths:** KGs are structured databases that capture and represent knowledge in a structured manner. They provide explicit, semantic structure that can mitigate the hallucination and factual grounding issues of LLMs.\n*   **Weaknesses:** The document notes that dynamic KG maintenance is a critical bottleneck, specifically regarding real-time applications that demand efficient synchronization mechanisms to keep the graph current without prohibitive computational overhead.\n\n**Motivation for Combination:**\nThe synergy of LLMs and KGs is motivated by the desire to leverage the strengths of both technologies to overcome their individual limitations. By combining the contextual understanding and text generation capabilities of LLMs with the structured knowledge representation of KGs, the resulting system aims to improve factual consistency, reduce hallucinations, and enhance relational reasoning (including multi-hop reasoning). The document highlights that integrating KG information throughout the model lifecycle (from pre-training to inference) yields measurable gains in these areas.\n\n(Section: \"6 SYNERGIZED LLMs + KGs\", Page: 18)\n(Section: \"ACKNOWLEDGMENTS\", Page: 21)\n(Section: \"Executive Knowledge Dossier & Core Findings\", Page: 1)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.07,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 56.648,
+    "ttfb_s": 17.955,
+    "error": null,
+    "id": "Q22"
+  },
+  {
+    "answer": "Based on the provided document context, there is **no information** regarding how existing knowledge graphs are grouped or what distinguishes specialized knowledge graphs from general-knowledge ones.\n\nThe retrieved sections (specifically Section 4.1 \"KG-enhanced LLM Pre-training\" and Section 4 \"KG-ENHANCED LLMs\") focus exclusively on **methods for integrating knowledge graphs into Large Language Models (LLMs)** during the pre-training and input stages. The text discusses specific models and techniques such as:\n*   **ERNIE**: Using word-entity alignment training objectives.\n*   **KALM**: Incorporating entity embeddings into input tokens.\n*   **KEPLER**: Employing both KG embedding and masked token pre-training objectives.\n*   **Deterministic LLM**: Focusing on capturing deterministic factual knowledge.\n*   **WKLM**: Replacing entities to distinguish replacement.\n*   **ERNIE 3.0**: Concatenating knowledge triple tokens with sentences.\n\nThe document does not contain a taxonomy, classification, or comparative analysis of different *types* of knowledge graphs (e.g., general vs. specialized).\n\nTherefore, the available document context does not contain enough information to answer this reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.22,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 54.579,
+    "ttfb_s": 18.157,
+    "error": null,
+    "id": "Q23"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.44,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.229,
+    "ttfb_s": 4.184,
+    "error": null,
+    "id": "Q24"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.28,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.31,
+    "ttfb_s": 4.009,
+    "error": null,
+    "id": "Q25"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.27,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.222,
+    "ttfb_s": 4.159,
+    "error": null,
+    "id": "Q26"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.3,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 6.113,
+    "ttfb_s": 4.821,
+    "error": null,
+    "id": "Q27"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.56,
+        "nodes": 6,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.947,
+    "ttfb_s": 4.873,
+    "error": null,
+    "id": "Q28"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.52,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.486,
+    "ttfb_s": 4.154,
+    "error": null,
+    "id": "Q29"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.66,
+        "nodes": 6,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 6.212,
+    "ttfb_s": 4.383,
+    "error": null,
+    "id": "Q30"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.36,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.289,
+    "ttfb_s": 4.166,
+    "error": null,
+    "id": "Q31"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.57,
+        "nodes": 5,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.252,
+    "ttfb_s": 4.19,
+    "error": null,
+    "id": "Q32"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.31,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.801,
+    "ttfb_s": 4.668,
+    "error": null,
+    "id": "Q33"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.27,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.972,
+    "ttfb_s": 4.844,
+    "error": null,
+    "id": "Q34"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.3,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.123,
+    "ttfb_s": 4.028,
+    "error": null,
+    "id": "Q35"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.27,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.017,
+    "ttfb_s": 3.958,
+    "error": null,
+    "id": "Q36"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.29,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 4.988,
+    "ttfb_s": 3.92,
+    "error": null,
+    "id": "Q37"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.27,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.222,
+    "ttfb_s": 3.964,
+    "error": null,
+    "id": "Q38"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.29,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.501,
+    "ttfb_s": 4.423,
+    "error": null,
+    "id": "Q39"
+  },
+  {
+    "answer": "Sorry, an error occurred while connecting to model providers. Please try again.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.3,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 5.501,
+    "ttfb_s": 4.433,
+    "error": null,
+    "id": "Q40"
+  }
+]

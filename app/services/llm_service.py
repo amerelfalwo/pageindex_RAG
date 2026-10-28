@@ -586,16 +586,12 @@ Do NOT select 4 nodes by default.
 Prefer fewer highly relevant nodes over many weakly relevant nodes.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-NO-EVIDENCE POLICY
+SELECTION POLICY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-If none of the available nodes provides meaningful evidence for the query:
-
-Return an empty node_list.
-
-Do NOT select nodes simply to avoid returning an empty result.
-
-The downstream answer generator is responsible for handling insufficient evidence.
+Identify which section(s) in the document outline are most logically related to the topic of the query.
+Select between 1 and 4 most relevant nodes that could cover, discuss, or contain the answer to the query.
+Do NOT return an empty list if any section topic is relevant.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AVAILABLE DOCUMENT SECTIONS

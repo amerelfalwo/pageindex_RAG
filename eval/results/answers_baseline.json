@@ -1,0 +1,754 @@
+[
+  {
+    "answer": "The paper illustrates the problem with the following concrete example:\n\n> “Einstein discovered gravity in 1687”  \n\nWhen an LLM is asked, “When did Einstein discover gravity?”, it may generate this incorrect statement, even though the historical fact is that Isaac Newton formulated the theory of gravitation.  \n\n(Section: “2 BACKGROUND”, Page 2)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.92,
+        "nodes": 3,
+        "docs": 1
+      },
+      {
+        "stage": "arxiv_search",
+        "query": "What concrete example does the paper give of an LLM stating a wrong fact about who discovered gravity?"
+      },
+      {
+        "stage": "arxiv_search_done",
+        "duration": 4.02,
+        "results": 5
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": true,
+    "latency_s": 14.603,
+    "ttfb_s": 6.25,
+    "error": null,
+    "id": "Q01"
+  },
+  {
+    "answer": "Decoder‑only large language models are typically trained with a **causal (next‑token) language‑modeling objective**.  \nDuring pre‑training they maximize the likelihood of each token \\(x_t\\) conditioned on all previous tokens \\(x_{<t}\\):\n\n\\[\n\\max \\sum_{t} \\log P(x_t \\mid x_{<t}; \\theta)\n\\]\n\nIn practice this means the model learns to predict the next word in a sequence, using a left‑to‑right (autoregressive) attention mask so that only past context is visible. This objective drives the model to generate fluent, coherent text at inference time.  \n\n*Note: The provided IEEE roadmap document does not contain details about the training objective of decoder‑only LLMs; the explanation above is based on general knowledge of standard LLM training practices.*",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 12.68,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 51.051,
+    "ttfb_s": 16.355,
+    "error": null,
+    "id": "Q02"
+  },
+  {
+    "answer": "A prompt for an LLM can be built from three parts:\n\n1. **Task description** – a brief statement of what the model should do.  \n2. **Few‑shot examples** – a few input‑output pairs that illustrate the desired behavior.  \n3. **Test input** – the actual instance the model must process and answer.\n\nThese three elements are explicitly listed in the roadmap’s discussion of prompt design for KG completion (Section “5.3 LLM‑augmented KG Construction”, Page 14).",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.57,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 53.687,
+    "ttfb_s": 18.033,
+    "error": null,
+    "id": "Q03"
+  },
+  {
+    "answer": "The document you uploaded does not contain a formal definition of a knowledge graph, so I’ll give you the standard definition that is commonly used in the literature (general knowledge, not taken from the PDF).\n\n**Formal definition**\n\nA knowledge graph (KG) is usually modeled as a directed, labeled multigraph  \n\n\\[\nG = (E, R, T)\n\\]\n\nwhere  \n\n| Symbol | Meaning |\n|--------|---------|\n| **E**  | **Entities** – the set of nodes in the graph. Each entity represents a real‑world object, concept, or instance (e.g., “Barack Obama”, “United States”, “President”). |\n| **R**  | **Relations** – the set of edge labels (also called predicates or property types). Each relation denotes a semantic connection between two entities (e.g., *profession*, *bornIn*, *marriedTo*). |\n| **T**  | **Triples** – a subset of the Cartesian product \\(E \\times R \\times E\\). Each triple \\((h, r, t) \\in T\\) encodes a directed edge from head entity \\(h\\) to tail entity \\(t\\) labeled by relation \\(r\\). This is the classic “subject‑predicate‑object” format. |\n\nSometimes the definition is extended with additional components:\n\n* **L** – a set of literals (strings, numbers, dates) that can appear as tail values, yielding triples of the form \\((e, r, \\ell)\\) where \\(\\ell \\in L\\).\n* **S** – a schema or ontology that constrains which entity types may be linked by which relation types.\n\n**What the sets stand for**\n\n* **E (Entities)** – the nodes; they are the basic units of knowledge.\n* **R (Relations)** – the types of edges; they capture how entities are semantically related.\n* **T (Triples)** – the actual facts stored in the graph; each triple asserts that a particular relation holds between two specific entities (or between an entity and a literal).\n\nThis representation enables both **symbolic reasoning** (by traversing the graph) and **statistical learning** (by embedding entities and relations into vector spaces).",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 11.54,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 52.185,
+    "ttfb_s": 15.517,
+    "error": null,
+    "id": "Q04"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to explain how a model that uses a visible matrix prevents knowledge‑graph triples from adding noise to the other tokens in a sentence.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 15.68,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 34.575,
+    "ttfb_s": 19.346,
+    "error": null,
+    "id": "Q05"
+  },
+  {
+    "answer": "The pioneering method is **LAMA** (the “LAnguage Model Analysis” benchmark).  \nLAMA was the first work that probed the knowledge stored in large language models by leveraging knowledge‑graph triples. It turns each KG fact into a **cloze‑style prompt**: the subject and relation are kept verbatim while the object is masked, producing a fill‑in‑the‑blank question for the model.  \n\n**Example from the document**  \n- KG triple: *(Obama, profession, president)*  \n- LAMA’s prompt: **“Obama’s profession is ___.”** (the object “president” is masked)  \n\nThe model’s ability to predict the masked token is then used to assess whether the LLM actually knows the fact.  \n\n(Section: “4.4 KG‑enhanced LLM Interpretability”, Page: 10)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.34,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 31.714,
+    "ttfb_s": 4.933,
+    "error": null,
+    "id": "Q06"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to answer this question reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 12.64,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 27.232,
+    "ttfb_s": 16.113,
+    "error": null,
+    "id": "Q07"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to describe a framework that pairs a small LLM with a larger one to correct errors in automatically generated knowledge graphs.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 13.8,
+        "nodes": 5,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 52.935,
+    "ttfb_s": 17.337,
+    "error": null,
+    "id": "Q08"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to describe how a particular group ensured that sentences in a Wikipedia‑derived text corpus were actually linked to the knowledge graph.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 10.52,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 50.684,
+    "ttfb_s": 14.054,
+    "error": null,
+    "id": "Q09"
+  },
+  {
+    "answer": "In the joint text‑KG attention architecture the knowledge‑graph representation is **updated at every transformer layer**:\n\n1. **Linearisation & concatenation** – The sub‑KG is first turned into a sequence of tokens and concatenated with the textual tokens (JointGT, 5.5 LLM‑augmented KG QA)【Section: \"5.5 LLM-augmented KG Question Answering\", Page: 17】.  \n\n2. **Self‑attention over the combined sequence** – The standard self‑attention module processes the whole token stream (text + KG).  \n\n3. **Pooling of KG tokens** – After self‑attention, a pooling layer extracts a contextual semantic vector for each KG entity and relation.  \n\n4. **Structure‑aware KG‑self‑attention** – These pooled KG vectors are fed into a second, **structure‑aware self‑attention layer** that fuses the KG embeddings with the textual embeddings. The output of this layer becomes the KG representation for the next transformer layer.  \n\n5. **Iterative",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.44,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 34.141,
+    "ttfb_s": 4.939,
+    "error": null,
+    "id": "Q10"
+  },
+  {
+    "answer": "The model that is trained with **word‑to‑entity alignment links** typically adopts a **dual‑encoder architecture**:\n\n1. **Text encoder** – a standard Transformer (e.g., BERT‑style) that converts the raw sentence into contextual token embeddings.  \n2. **KG encoder** – a graph‑neural network (or a lightweight embedding lookup) that produces a vector for each KG entity that appears in the alignment links.  \n\nThe alignment links act as a bridge between the two streams:\n\n* For every word that is linked to a KG entity, the corresponding entity embedding is **injected** into the token sequence.  \n* This injection can be done by **concatenating** the entity vector to the word’s token embedding, or by inserting a **special “entity‑token”** that carries the KG representation.  \n* After injection, a **cross‑attention layer** (or a shared Transformer block) jointly processes the enriched token sequence, allowing the model to fuse textual context with structured KG knowledge.  \n\nDuring training, the model is optimized to **align** the textual representation of a word with the representation of its linked entity, often using a contrastive loss that pulls matched word‑entity pairs together and pushes mismatched pairs apart. This encourages the encoders to learn a shared semantic space where text and KG information are seamlessly integrated.\n\n> **Source** – The architecture described above is detailed in the paper *“Text‑To‑KG Alignment: Comparing Current Methods on Classification Tasks”* (arXiv 2306.02871), which outlines the dual‑encoder design, the use of alignment links for token‑entity fusion, and the contrastive training objective. (https://arxiv.org/pdf/2306.02871)\n\n### 🌐 Sources and Relevant Links\n- **Text‑To‑KG Alignment: Comparing Current Methods on Classification Tasks** – The paper explains the dual‑encoder setup, word‑to‑entity link injection, and cross‑attention fusion.  \n  [https://arxiv.org/pdf/2306.02871](https://arxiv.org/pdf/2306.02871) – PDF contains the full methodological description.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 13.22,
+        "nodes": 3,
+        "docs": 1
+      },
+      {
+        "stage": "web_search",
+        "query": "How does the model trained with word-to-entity alignment links organize its encoders to fuse text with KG information?"
+      },
+      {
+        "stage": "web_search_done",
+        "duration": 7.46,
+        "results": 5
+      }
+    ],
+    "used_web": true,
+    "used_arxiv": false,
+    "latency_s": 41.537,
+    "ttfb_s": 16.783,
+    "error": null,
+    "id": "Q11"
+  },
+  {
+    "answer": "The model that jointly optimizes a knowledge‑graph (KG) embedding objective together with masked‑token pre‑training in a single encoder is **kNN‑KGE** [136].  \n\nkNN‑KGE treats each entity and relation as a special token that can be fed to a large language model (LLM). During training a triple \\((h, r, t)\\) and its textual description are converted into a sentence such as  \n\n\\[\nx = [\\text{CLS}]\\, h\\, \\text{Text}_h\\,[\\text{SEP}]\\, r\\,[\\text{SEP}]\\,[\\text{MASK}]\\, \\text{Text}_t\\,[\\text{SEP}]\n\\]\n\nwhere the tail entity is masked. The whole sentence is processed by the LLM, so the same encoder learns both to predict the masked token (standard masked‑language‑model objective) and to align the resulting token representations with the KG embedding loss.  \n\n**Entity embeddings** are obtained directly from the LLM’s token embeddings for the special entity tokens; the encoder’s output vectors for those tokens serve as the learned KG entity embeddings.  \n\n(Section: “5.2 LLM‑augmented KG Completion”, Page: 12)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 16.23,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 40.836,
+    "ttfb_s": 19.855,
+    "error": null,
+    "id": "Q12"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to identify a GNN‑based method that both grounds LLM reasoning steps in knowledge graphs for analysis and is criticized in fusion reasoning for “squeezing the text into one vector.”",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 9.48,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 51.804,
+    "ttfb_s": 13.013,
+    "error": null,
+    "id": "Q13"
+  },
+  {
+    "answer": "**General advantage of using prompts with KGs and LLMs**  \n- Prompt‑based approaches (e.g., AutoKG) let you tap into the knowledge stored in a graph by simply crafting a textual prompt for a **closed‑source LLM** such as ChatGPT or GPT‑4, without having to retrain or fine‑tune the model. This makes it possible to exploit KG information quickly and with far fewer computational resources. (Section: “5.3 LLM‑augmented KG Construction”, Page 14)\n\n**Main practical downside of KG‑based prompts**  \n- The document does not spell out a specific downside for KG prompts. It does note that other integration methods (e.g., instruction‑tuning) *require* model retraining, which is time‑consuming and resource‑intensive, but it does not explicitly describe a drawback such as brittleness, scalability limits, or prompt‑design overhead for KG prompts themselves.  \n\n> *The available document context does not contain enough information to state a concrete, document‑supported downside of KG prompts.*",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.97,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 11.73,
+    "ttfb_s": 4.496,
+    "error": null,
+    "id": "Q14"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to describe how a method that fuses a large language model (LLM) with a graph neural network (GNN) reasons over knowledge‑graph facts, nor does it detail how such an architecture differs from a dual‑encoder approach.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 2.23,
+        "nodes": 5,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 16.339,
+    "ttfb_s": 5.758,
+    "error": null,
+    "id": "Q15"
+  },
+  {
+    "answer": "The encyclopedic knowledge graph that appears in the roadmap as the most widely‑used example is **Wikidata** (listed under the “Knowledge Base” category in the representative‑applications table)【Section: \"3 ROADMAP & CATEGORIZATION\", Page: 5】.\n\n* **Source of its knowledge** – The document does not provide details about where Wikidata’s knowledge originates (e.g., whether it is curated from Wikipedia, community contributions, etc.). That information is absent from the supplied context.  \n\n* **Role in real‑world applications** – Wikidata is presented as one of the practical applications that combine LLMs with a knowledge graph. In the table it is shown as a Knowledge Base that can be leveraged together with large language models for various downstream tasks (e.g., enhancing factual grounding, retrieval‑augmented generation, etc.)【Section: \"3 ROADMAP & CATEGORIZATION\", Page: 5】.  \n\nSo, according to the available document excerpt, Wikidata is the encyclopedic KG highlighted, but the roadmap does not specify its knowledge source, and it is positioned as a Knowledge Base used in real‑world LLM‑KG hybrid applications.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.12,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 33.739,
+    "ttfb_s": 4.766,
+    "error": null,
+    "id": "Q16"
+  },
+  {
+    "answer": "Hallucination — the generation of statements that are not grounded in reality — undermines users’ confidence in an LLM because the model can appear knowledgeable while actually providing false or misleading information. When a system repeatedly produces such “made‑up” facts, users cannot rely on its outputs for critical or factual tasks, which erodes trust and limits adoption in real‑world applications.\n\nThe roadmap proposes a **new, pervasive role for knowledge graphs (KGs)** as a factual backbone that is woven into every stage of an LLM’s life‑cycle:\n\n* **Pre‑training enrichment** – graph triples are interleaved with text so the model learns to associate language tokens with explicit semantic entities and relations.  \n* **Inference‑time grounding** – KG information is retrieved and injected during generation, giving the model a concrete source to verify or correct its predictions.  \n* **Dynamic KG maintenance** – continuous, low‑latency synchronization of the graph with fresh data ensures that the factual substrate stays up‑to‑date, preventing the model from drifting into outdated or fabricated claims.\n\nBy embedding KGs throughout pre‑training, retrieval‑augmented generation, and real‑time updating, the roadmap argues that hallucinations can be substantially reduced, thereby restoring factual consistency and user trust.  \n\n(Section: “Key Insights”)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 12.49,
+        "nodes": 3,
+        "docs": 1
+      },
+      {
+        "stage": "arxiv_search",
+        "query": "Why does hallucination hurt trust in LLMs, and what new role for KGs does the paper highlight for dealing with it?"
+      },
+      {
+        "stage": "arxiv_search_done",
+        "duration": 6.86,
+        "results": 5
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": true,
+    "latency_s": 35.43,
+    "ttfb_s": 16.066,
+    "error": null,
+    "id": "Q17"
+  },
+  {
+    "answer": "**Why pre‑training‑based KG injection can’t keep up with changing knowledge**\n\n- **Static nature of the pre‑training phase** – When KG triples are interleaved with text during the pre‑training of an LLM, the model’s parameters are fixed after training. Adding new facts later would require another full‑scale pre‑training run, which is computationally expensive and therefore too slow for real‑time updates.  \n- **KGs themselves are dynamic** – Knowledge graphs continuously evolve as new entities and relations appear. The document notes that “KGs can also actively evolve with new knowledge continuously added” but also that “current approaches in KGs … are inadequate in handling the incomplete and dynamically changing nature of real‑world KGs” (Section: “2 BACKGROUND”, Page 2). Because the pre‑training stage captures only the snapshot of the KG available at that time, any subsequent changes are missed until the model is re‑trained.\n\n**Why directly editing a single fact in an LLM is not a clean fix**\n\n- **Distributed representation of knowledge** – An LLM stores facts implicitly across millions (or billions) of parameters. Changing one fact by editing weights or prompts can unintentionally alter other related knowledge, leading to inconsistencies or new hallucinations.  \n- **Lack of interpretability and controllability** – The document highlights that LLMs “represent knowledge implicitly in their parameters” and that “the specific patterns and functions LLMs used to arrive at predictions … are not directly accessible or explainable to humans” (Section: “2 BACKGROUND”, Page 2). Consequently, a targeted edit does not guarantee that only the intended fact is changed, and it provides no transparent way to verify the edit’s effect.\n\n**In short:** Pre‑training‑based KG injection is a one‑off, static integration that cannot absorb the rapid, continuous updates that real‑world knowledge graphs require, while direct fact‑level editing of an LLM is fragile because the model’s knowledge is distributed and opaque, making isolated corrections risky and hard to validate.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 12.56,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 54.976,
+    "ttfb_s": 16.052,
+    "error": null,
+    "id": "Q18"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to answer this question reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.4,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 16.864,
+    "ttfb_s": 4.888,
+    "error": null,
+    "id": "Q19"
+  },
+  {
+    "answer": "Closed‑source models such as ChatGPT (or GPT‑4) cannot easily expose their internal hidden‑state representations, and they cannot be fine‑tuned in the usual way. Fusion‑module approaches (e.g., the PaE architecture) rely on extracting the LLM’s token embeddings or adding a trainable prediction head on top of those embeddings. Because the representations of closed models are unavailable, the fusion module cannot be attached or updated, making knowledge‑injection through a learned “fusion” layer impractical.  \n\n**Work‑around suggested in the roadmap**  \nThe document proposes treating the closed LLM as a black‑box and using **prompt engineering** instead of internal model modification. AutoKG, for example, designs customized prompts that contain a task description, few‑shot examples, and the test input, thereby steering the LLM to perform KG‑completion (predict the tail entity) without any model‑level changes. This prompt‑based approach sidesteps the need for direct access to the LLM’s internal representations.  \n\n(Section: “5.3 LLM‑augmented KG Construction”, Page: 14)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 9.22,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 51.83,
+    "ttfb_s": 13.349,
+    "error": null,
+    "id": "Q20"
+  },
+  {
+    "answer": "**Main approaches the roadmap proposes for unifying Large Language Models (LLMs) with Knowledge Graphs (KGs)**  \n\n| Approach | Where it is applied in the LLM lifecycle | What it does | Relationship to the other approaches |\n|----------|-------------------------------------------|--------------|--------------------------------------|\n| **1. Retrieval‑Augmented Generation (RAG)** | **Inference (post‑hoc)** | The LLM queries a KG at generation time, retrieves relevant triples, and conditions its output on the retrieved facts. | Provides a lightweight “plug‑in” that can be added to any pretrained LLM, but the reasoning depth is limited by the retrieval step. It is complementary to deeper integration methods that embed KG knowledge earlier. |\n| **2. Graph‑aware Tokenization** | **Model input encoding** | KG structure (nodes, edges, relation types) is transformed into a token sequence (e.g., special tokens for entities and relations) so the LLM can attend to graph topology directly. | Bridges the representation gap between symbolic graphs and the token‑based LLM. It can be used both in RAG pipelines (to encode retrieved sub‑graphs) and in joint pre‑training. |\n| **3. Joint LLM‑KG Pre‑training** | **Pre‑training (early integration)** | Textual corpora and KG triples are interleaved during the massive pre‑training phase, allowing the model to learn joint semantic and relational patterns. | Yields the strongest relational reasoning because the model internalizes graph knowledge from the start. It can later be fine‑tuned with RAG or graph‑aware tokenization for specific tasks. |\n| **4. Dynamic KG Maintenance & Synchronization** | **Throughout (especially inference)** | Efficient indexing, incremental updates, and caching mechanisms keep the KG up‑to‑date in real‑time applications without large latency penalties. | Acts as an enabling infrastructure for all three integration strategies; without fast, consistent KG updates, RAG, token‑aware encoding, and even pre‑trained KG knowledge would become stale. |\n\n### How the approaches relate to each other  \n\n1. **Continuum of integration depth** –  \n   - *RAG* is the shallowest, adding KG facts only when needed.  \n   - *Graph‑aware tokenization* enriches the input representation, making the LLM more “graph‑savvy” without altering its parameters.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 10.54,
+        "nodes": 3,
+        "docs": 1
+      },
+      {
+        "stage": "arxiv_search",
+        "query": "What are the main ways the paper proposes to unify LLMs and KGs, and how do they relate to each other?"
+      },
+      {
+        "stage": "arxiv_search_done",
+        "duration": 1.64,
+        "results": 5
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": true,
+    "latency_s": 35.047,
+    "ttfb_s": 14.401,
+    "error": null,
+    "id": "Q21"
+  },
+  {
+    "answer": "**Strengths that make LLMs attractive**\n\n- **Statistical language mastery** – LLMs learn massive text corpora and can generate fluent, context‑aware prose.  \n- **Broad coverage** – They capture a wide range of linguistic patterns, idioms, and world knowledge encoded implicitly in the data.  \n\n**Weaknesses of LLMs that drive the need for KG support**\n\n- **Hallucination & shallow factual grounding** – Pure LLMs often produce statements that are plausible‑sounding but factually incorrect. (Section: “Key Insights”)  \n- **Limited relational / multi‑hop reasoning** – Without explicit structure, they struggle to perform deep, chain‑of‑thought inference over entities and their relationships. (Section: “Key Insights”)  \n\n**Strengths that make Knowledge Graphs (KGs) attractive**\n\n- **Explicit, semantic structure** – KGs store facts as triples, providing clear, verifiable relationships between entities.  \n- **High factual consistency & relational reasoning** – The graph format enables precise retrieval and multi‑hop inference, which can be evaluated directly. (Section: “Key Insights”)  \n\n**Weaknesses of KGs that motivate coupling with LLMs**\n\n- **Static and maintenance‑heavy** – Keeping a KG up‑to‑date in real time requires costly indexing, incremental updates, and caching mechanisms. (Section: “Key Insights”)  \n- **Limited linguistic nuance** – Pure KG representations lack the rich contextual language modeling that LLMs provide, making them less effective for natural‑language generation on their own.  \n\n**Why combine them?**  \nBy marrying LLMs’ fluency and broad coverage with KGs’ factual precision and relational reasoning, hybrid systems can reduce hallucinations, improve factual consistency, and enable deeper reasoning while addressing each technology’s individual shortcomings.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 14.1,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 37.745,
+    "ttfb_s": 17.739,
+    "error": null,
+    "id": "Q22"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to answer this question reliably.\n\n**General knowledge answer (clearly distinguished from the document):**\n\nExisting knowledge graphs (KGs) are commonly grouped into two broad categories:\n\n| Group | Typical Characteristics | Example(s) |\n|-------|--------------------------|------------|\n| **General‑knowledge KGs** | • Aim to cover a wide range of topics and domains.<br>• Often built from publicly available sources (e.g., Wikipedia, web crawls).<br>• Emphasize breadth and coverage rather than deep domain detail.<br>• Frequently crowd‑sourced or automatically extracted. | • **Wikidata**<br>• **DBpedia**<br>• **Freebase** (now deprecated) |\n| **Specialized (domain‑specific) KGs** | • Focus on a particular domain or industry (e.g., biomedicine, finance, law).<br>• Curated by experts or organizations with domain expertise.<br>• Contain richer, more precise schemas and relations tailored to that field.<br>• Prioritize accuracy and depth over sheer breadth. | • **UMLS** (Unified Medical Language System) for healthcare<br>• **BioGRID** or **Hetionet** for biomedical research<br>• **FinKG** for financial data<br>• **LegalKG** for legal statutes and case law |\n\n**Key distinctions**\n\n1. **Scope of coverage** – General‑knowledge KGs strive for *broad* coverage across many subjects, while specialized KGs concentrate on *narrow* domains.\n2. **Source and curation** – General KGs often rely on automated extraction and community contributions; specialized KGs are usually curated by domain experts and may involve manual validation.\n3. **Schema richness** – Specialized KGs tend to have more detailed, domain‑specific ontologies and relation types, whereas general KGs use a more generic set of relations.\n4. **Use‑case focus** – General KGs support applications that need wide‑area knowledge (e.g., open‑domain QA, chatbots), whereas specialized KGs are employed for tasks demanding high precision in a specific field (e.g., clinical decision support, financial risk analysis).",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 11.6,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 38.321,
+    "ttfb_s": 15.207,
+    "error": null,
+    "id": "Q23"
+  },
+  {
+    "answer": "**Prefer baking KG knowledge into LLM training when:**\n\n- The knowledge is **static or time‑insensitive** (e.g., commonsense facts, domain‑specific reasoning that does not change often).  \n- You want the model to **internalize the graph structure** so that it can reason more deeply and provide better interpretability without needing an external lookup at run‑time.  \n\n**Prefer supplying KG knowledge at inference time when:**\n\n- The knowledge is **open‑domain and frequently updated** (e.g., real‑time facts, rapidly evolving data).  \n- You need the system to stay **current without re‑training** the LLM, leveraging a retrieval‑augmented or prompting approach that can fetch the latest graph triples on‑the‑fly.  \n\nThese guidelines are directly reflected in the roadmap: it recommends “KG‑enhanced LLM **pre‑training** methods … for time‑insensitive knowledge in particular domains … otherwise, **KG‑enhanced LLM inference** methods can be used to handle open‑domain knowledge with frequent updates” (Section: “4.4 KG‑enhanced LLM Interpretability”, Page: 10).",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.11,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 15.314,
+    "ttfb_s": 4.724,
+    "error": null,
+    "id": "Q24"
+  },
+  {
+    "answer": "The roadmap (IEEE Roadmap “LLM + KG Hybrid AI”) discusses several concrete tasks in which large language models are leveraged to **enhance knowledge‑graph construction, maintenance, and use**:\n\n| Task | How LLMs are used (as described in the paper) |\n|------|----------------------------------------------|\n| **Hallucination reduction / factual grounding** | LLM outputs are anchored to KG triples during generation, which markedly cuts hallucinations and improves factual consistency. |\n| **Relational inference & multi‑hop reasoning** | Joint KG‑enhanced pre‑training interleaves graph triples with text, giving the model the ability to perform multi‑hop reasoning over the graph more reliably than post‑hoc retrieval‑augmented generation. |\n| **KG completion & enrichment** | LLMs generate candidate entities, relations, or attribute values that are then validated against the KG, helping to populate missing facts. |\n| **Entity linking & disambiguation** | By consulting the KG during tokenization or decoding, the model can map surface forms to canonical KG identifiers, improving downstream KG quality. |\n| **Dynamic KG maintenance** | The paper highlights the need for efficient synchronization mechanisms (incremental indexing, caching) so that LLM‑driven updates can keep the KG current in real‑time applications. |\n| **Evaluation of hybrid systems** | A suite of metrics is proposed that jointly assess language fluency, factual accuracy, and graph‑based reasoning, guiding the development of LLM‑KG pipelines. |\n\nThese tasks collectively illustrate the paper’s vision of a **tight, end‑to‑end integration** where LLMs not only consume KG knowledge but also actively **improve and extend the graph** throughout the model lifecycle.\n\n**Citation**  \n(Section: “Executive Knowledge Dossier & Core Findings”, Page: 1)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 11.71,
+        "nodes": 3,
+        "docs": 1
+      },
+      {
+        "stage": "arxiv_search",
+        "query": "Which tasks does the paper cover for using LLMs to improve KGs?"
+      },
+      {
+        "stage": "arxiv_search_done",
+        "duration": 1.64,
+        "results": 5
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": true,
+    "latency_s": 34.574,
+    "ttfb_s": 15.303,
+    "error": null,
+    "id": "Q25"
+  },
+  {
+    "answer": "**Building a Knowledge Graph (KG) with LLMs – Typical Stages & Newer Approaches**\n\n| Stage | What happens | Typical techniques (newer approaches) |\n|-------|--------------|----------------------------------------|\n| **1. Define the KG‑completion task & design prompts** | Identify the head entity and the relation for which a tail entity is needed. Create a prompt that contains a short task description, a few‑shot example set, and the test input. | Prompt‑engineered pipelines such as **AutoKG** (uses customized prompts for closed‑source LLMs) and the **PaG** (Prompt‑as‑Generator) framework. (Section: “5.3 LLM‑augmented KG Construction”, Page 14) |\n| **2. Choose the LLM‑based architecture** | Decide whether the LLM will **generate** the tail directly (PaG) or will be used as an **encoder** whose representation is fed to a lightweight prediction head (PaE). | • **PaG** – LLM receives the prompt and outputs the tail entity. <br>• **PaE** – LLM’s hidden states are frozen; only a small prediction head is trained on top. (Section: “5.3 LLM‑augmented KG Construction”, Page 14) |\n| **3. Prepare the training data & pre‑training** | Convert KG facts into a format suitable for seq2seq models. The **KG‑S2S** approach rewrites each triple into a **quadruple** *(h, r, t, m)* where *m* is an additional condition (e.g., temporal tag). | • **KG‑S2S** framework (uses entity descriptions, soft prompts, Seq2Seq dropout). <br>• Joint KG‑enhanced pre‑training that interleaves graph triples with textual corpora. (Section: “5.3 LLM‑augmented KG Construction”, Page 14) |\n|",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.02,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 13.796,
+    "ttfb_s": 4.676,
+    "error": null,
+    "id": "Q26"
+  },
+  {
+    "answer": "**Two dominant styles of synergized LLM + KG reasoning**\n\n| Style | How it works | Main strengths | Main weaknesses |\n|-------|--------------|----------------|-----------------|\n| **1. Retrieval‑augmented (post‑hoc) fusion** – e.g., RAG‑style pipelines that pull relevant KG facts at inference time and inject them into the LLM prompt. | • The LLM stays unchanged; a separate retriever fetches triples or sub‑graphs that are concatenated to the input. <br>• The knowledge source can be updated instantly without retraining the model. | • Keeps the LLM’s parameters untouched, so deployment is simple and low‑cost. <br>• Enables up‑to‑date factual grounding because the KG can be refreshed continuously. | • The LLM must still “understand” the retrieved text, which can be noisy or incomplete, leading to limited reasoning depth. <br>• Latency can increase due to the retrieval step, especially for large KGs. <br>• Performance often lags behind tightly integrated models on multi‑hop reasoning tasks. (Section: “KG‑enhanced LLM Inference”, Page 9) |\n| **2. Joint LLM‑KG pre‑training (integrated embedding)** – the KG triples are interleaved with textual corpora during the LLM’s pre‑training or fine‑tuning, producing a single model that natively encodes graph structure. | • Graph entities/relations are treated as special tokens or are embedded together with text (e.g., kNN‑KGE, LMKE, LambdaKG). <br>• The model learns a unified vector space where both linguistic and relational information coexist. | • Empirically yields higher factual consistency and stronger multi‑hop relational reasoning (global roadmap notes that joint KG‑enhanced pre‑training “consistently outperforms post‑hoc retrieval methods”). <br>• Inference is fast because no external retrieval is needed. | • Requires costly pre‑training or fine‑tuning on large KG‑augmented corpora; updating the KG later typically demands another training round. <br>• Scalability can be limited by the size of the graph that can be encoded in the model’s vocabulary and context window. (Global Knowledge Memory summary) |\n\n### Take‑away\n- **Retrieval‑augmented fusion** is attractive for **rapid knowledge updates** and **low‑cost deployment**, but it may suffer from **shallower reasoning** and **higher latency**.  \n- **Joint LLM‑KG pre‑training** delivers **deeper, more accurate reasoning** and **lower inference latency**, yet it demands **substantial training resources** and **",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 13.69,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 38.274,
+    "ttfb_s": 17.224,
+    "error": null,
+    "id": "Q27"
+  },
+  {
+    "answer": "**Open challenges identified in the roadmap**\n\n- **Dynamic knowledge‑graph (KG) maintenance** – Real‑time applications need the KG to stay up‑to‑date without incurring large computational costs. The paper calls for new indexing, incremental‑update, and caching strategies to keep the graph synchronized with low latency. (Section: “Key Insights”)  \n- **Efficient KG‑LLM synchronization** – Seamless, low‑latency interaction between the KG and the large language model (LLM) is a bottleneck; research must devise mechanisms that allow rapid",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.08,
+        "nodes": 3,
+        "docs": 1
+      },
+      {
+        "stage": "arxiv_search",
+        "query": "What open challenges and expected milestones does the paper outline for the field going forward?"
+      },
+      {
+        "stage": "arxiv_search_done",
+        "duration": 1.84,
+        "results": 5
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": true,
+    "latency_s": 11.353,
+    "ttfb_s": 4.598,
+    "error": null,
+    "id": "Q28"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to determine how many unsupervised graph‑text training examples the Wikipedia‑derived corpus contained.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.1,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 14.972,
+    "ttfb_s": 4.703,
+    "error": null,
+    "id": "Q29"
+  },
+  {
+    "answer": "المعلومة المطلوبة غير مذكورة داخل المستند المرفق. لا يتضمن نصّ المستند المتاح تفاصيل عدد الطبقات في الإطار المتكامل أو أسماء هذه الطبقات. لذلك لا يمكنني تقديم إجابة دقيقة بناءً على ما تم توفيره.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 8.55,
+        "nodes": 5,
+        "docs": 1
+      },
+      {
+        "stage": "arxiv_search",
+        "query": "How many layers does the paper's unified synergized framework have, and what are they?"
+      },
+      {
+        "stage": "arxiv_search_done",
+        "duration": 1.33,
+        "results": 5
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": true,
+    "latency_s": 31.858,
+    "ttfb_s": 12.148,
+    "error": null,
+    "id": "Q30"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to identify the grant number from the Chinese National Natural Science Foundation that is acknowledged.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 9.16,
+        "nodes": 1,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 47.671,
+    "ttfb_s": 12.836,
+    "error": null,
+    "id": "Q31"
+  },
+  {
+    "answer": "The scalable KG‑completion model described in the roadmap uses a **T5 small** architecture.  \nUnlike many prior KGC approaches, this model is **randomly initialized** rather than being loaded from pretrained weights.  \n\n(Section: “5.3 LLM‑augmented KG Construction”, Page: 14)",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 47.4,
+        "nodes": 4,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 67.365,
+    "ttfb_s": 65.07,
+    "error": null,
+    "id": "Q32"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to answer this reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.95,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 10.628,
+    "ttfb_s": 6.042,
+    "error": null,
+    "id": "Q33"
+  },
+  {
+    "answer": "The provided document context does not contain information about the number of GPU hours required to pre‑train the knowledge‑enhanced ERNIE models.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.06,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 12.548,
+    "ttfb_s": 5.085,
+    "error": null,
+    "id": "Q34"
+  },
+  {
+    "answer": "المعلومة المطلوبة غير مذكورة داخل المستند المرفق.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.34,
+        "nodes": 3,
+        "docs": 1
+      },
+      {
+        "stage": "arxiv_search",
+        "query": "Which privacy risks arise when personal data stored in a KG is fed to an LLM, and how does the paper recommend mitigating them?"
+      },
+      {
+        "stage": "arxiv_search_done",
+        "duration": 3.66,
+        "results": 5
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": true,
+    "latency_s": 12.82,
+    "ttfb_s": 4.921,
+    "error": null,
+    "id": "Q35"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to specify the per‑query latency that EMAT achieved compared with the original RAG system in milliseconds.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 6.87,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 29.325,
+    "ttfb_s": 12.262,
+    "error": null,
+    "id": "Q36"
+  },
+  {
+    "answer": "The provided document context does not contain a specific numeric value for the percentage reduction in hallucinations when GPT‑4 is combined with a knowledge graph. It mentions that integrating knowledge graphs with LLMs “markedly reduces hallucination,” but no exact percentage is reported in the excerpts available.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.0,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 14.748,
+    "ttfb_s": 4.572,
+    "error": null,
+    "id": "Q37"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to answer this reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 0.65,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 9.361,
+    "ttfb_s": 6.993,
+    "error": null,
+    "id": "Q38"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to answer this question reliably.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.37,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 13.501,
+    "ttfb_s": 4.886,
+    "error": null,
+    "id": "Q39"
+  },
+  {
+    "answer": "The provided document context does not contain enough information to specify which hyperparameters—such as the margin value—performed best for the Pretrain‑KGE experiments described by the authors.",
+    "stages": [
+      {
+        "stage": "retrieved",
+        "duration": 1.96,
+        "nodes": 3,
+        "docs": 1
+      }
+    ],
+    "used_web": false,
+    "used_arxiv": false,
+    "latency_s": 31.574,
+    "ttfb_s": 5.477,
+    "error": null,
+    "id": "Q40"
+  }
+]
